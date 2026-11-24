@@ -29,6 +29,8 @@ pub struct Config {
     pub bind_host: String,
     pub ports: Vec<u16>,
     pub tls: bool,
+    #[serde(default)]
+    pub timing: TimingOptions,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -113,23 +115,58 @@ struct Engine<'a> {
     next_id: u64,
 }
 
+#[derive(Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+pub struct TimingOptions {
+    pub handshake_ms: u64,
+    pub heartbeat_ms: u64,
+    pub pong_ms: u64,
+    pub reconnect_ms: u64,
+    pub max_reconnect_ms: u64,
+    pub jitter_percent: u8,
+}
+
 struct Timing {
     handshake: Duration,
     heartbeat: Duration,
     pong: Duration,
     reconnect: Duration,
     max_reconnect: Duration,
+    jitter: f64,
 }
 
-impl Default for Timing {
+impl Default for TimingOptions {
     fn default() -> Self {
         Self {
-            handshake: Duration::from_secs(5),
-            heartbeat: Duration::from_secs(2),
-            pong: Duration::from_secs(7),
-            reconnect: Duration::from_secs(4),
-            max_reconnect: Duration::from_secs(30),
+            handshake_ms: 5_000,
+            heartbeat_ms: 2_000,
+            pong_ms: 7_000,
+            reconnect_ms: 4_000,
+            max_reconnect_ms: 30_000,
+            jitter_percent: 10,
         }
+    }
+}
+
+impl TimingOptions {
+    fn validate(self) -> io::Result<Timing> {
+        if !(100..=300_000).contains(&self.handshake_ms)
+            || !(100..=300_000).contains(&self.heartbeat_ms)
+            || !(100..=3_600_000).contains(&self.pong_ms)
+            || !(100..=300_000).contains(&self.reconnect_ms)
+            || !(self.reconnect_ms..=3_600_000).contains(&self.max_reconnect_ms)
+            || self.jitter_percent > 100
+        {
+            return Err(io::Error::other("Invalid relay timing settings"));
+        }
+        Ok(Timing {
+            handshake: Duration::from_millis(self.handshake_ms),
+            heartbeat: Duration::from_millis(self.heartbeat_ms),
+            pong: Duration::from_millis(self.pong_ms),
+            reconnect: Duration::from_millis(self.reconnect_ms),
+            max_reconnect: Duration::from_millis(self.max_reconnect_ms),
+            jitter: f64::from(self.jitter_percent) / 100.0,
+        })
     }
 }
 
@@ -188,6 +225,7 @@ impl<'a> Engine<'a> {
                 "Invalid relay, route, or bind configuration",
             ));
         }
+        let timing = config.timing.validate()?;
         let protocol = Protocol::new(&config.key, &config.route, config.ports.len())?;
         let relay = Relay::new(
             config.relay_host,
@@ -233,7 +271,7 @@ impl<'a> Engine<'a> {
             listeners,
             data: JoinSet::new(),
             state,
-            timing: Timing::default(),
+            timing,
             random: SystemRandom::new(),
             next_id: 0,
         })
@@ -257,7 +295,8 @@ impl<'a> Engine<'a> {
             self.publish(Status::Connecting, Some(retry.into()));
             let mut sample = [0; 2];
             let _ = self.random.fill(&mut sample);
-            let jitter = 0.9 + 0.2 * f64::from(u16::from_ne_bytes(sample)) / f64::from(u16::MAX);
+            let fraction = f64::from(u16::from_ne_bytes(sample)) / f64::from(u16::MAX);
+            let jitter = 1.0 + self.timing.jitter * (2.0 * fraction - 1.0);
             let retry_at = Instant::now() + delay.mul_f64(jitter).min(self.timing.max_reconnect);
             loop {
                 tokio::select! {

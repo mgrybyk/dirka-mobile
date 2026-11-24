@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26.13.0'
       - uses: gradle/actions/wrapper-validation@v5
       - name: Set up Temurin JDK 25.0.5.1+2
         run: |
@@ -44,10 +47,11 @@ jobs:
           git clone --depth 1 --branch 3.50.1 https://github.com/flutter/flutter.git "$flutter_sdk"
           echo "$flutter_sdk/bin" >> "$GITHUB_PATH"
       - name: Install Android SDK packages
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+        run: sdkmanager 'platforms;android-36' 'platforms;android-35' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test integration_test
       - run: flutter analyze --fatal-warnings --fatal-infos
+      - run: tool/fetch-upstream.sh
       - run: flutter test
       - run: flutter build apk --release
       - name: Verify ARM64 APK native libraries and alignment

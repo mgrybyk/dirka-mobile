@@ -1,15 +1,21 @@
 import 'package:material_ui/material_ui.dart';
 
-import 'probe/probe_screen.dart';
+import 'clients/client_repository.dart';
+import 'clients/clients_screen.dart';
 import 'tunnel/native_tunnel_engine.dart';
 import 'tunnel/tunnel_engine.dart';
 
 void main() => runApp(const DirkaApp());
 
 class DirkaApp extends StatelessWidget {
-  const DirkaApp({this.engine = const NativeTunnelEngine(), super.key});
+  const DirkaApp({
+    this.engine = const NativeTunnelEngine(),
+    this.repository = const SecureClientRepository(),
+    super.key,
+  });
 
   final TunnelEngine engine;
+  final ClientRepository repository;
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +26,7 @@ class DirkaApp extends StatelessWidget {
         colorSchemeSeed: Colors.teal,
         brightness: Brightness.dark,
       ),
-      home: ProbeScreen(engine: engine),
+      home: ClientsScreen(engine: engine, repository: repository),
     );
   }
 }

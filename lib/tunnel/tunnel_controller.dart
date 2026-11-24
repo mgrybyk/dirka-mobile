@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../tunnel/tunnel_engine.dart';
+import 'tunnel_engine.dart';
 
-final class ProbeController extends ChangeNotifier {
-  ProbeController(this._engine);
+final class TunnelController extends ChangeNotifier {
+  TunnelController(this._engine);
 
   final TunnelEngine _engine;
   TunnelClient? _client;

@@ -31,17 +31,18 @@ Tokio supplies async TCP, timers, and backpressured bidirectional copying.
 Tokio-rustls uses ring for TLS crypto, and ring also supplies nonces from
 the OS random source. WebPKI roots provide portable Mozilla trust roots.
 TLS verifies the chain and configured hostname or IP on control and data
-connections. The probe uses these roots on Android. Device-added CAs are
+connections. The Android app uses these roots. Device-added CAs are
 outside its trust policy. Host tests inject a temporary test CA. Serde and
 Serde JSON marshal the C ABI configuration, snapshots, and existing upstream
 exchange messages. Dart uses the official `material_ui` package from the
 Flutter template and `ffi` for native buffer allocation.
 
-The probe uses upstream default heartbeat, setup, and reconnect timings.
-Each client bounds admitted streams and its listener queue to 128 entries
-each. The native API accepts one to 32 ordered ports. The temporary screen
-exposes a single loopback port. The upstream dotenv parser lives in JavaScript.
-The pasted format and complete configuration validation are Step 2 work.
+Each client uses upstream default heartbeat, setup, and reconnect timings
+unless the validated configuration supplies overrides. The engine limits
+admitted streams and its listener queue to 128 entries each. The native API
+accepts one to 32 ordered ports. Dart validates the supported dotenv fields
+against the upstream JavaScript parser in parity tests and sends typed inputs
+to Rust. The Android Keystore-backed storage plugin encrypts the original text.
 Protocol v9 drops a wrong-key connection without an authenticated error.
 That case follows the same bounded exponential retry schedule as other
 relay interruptions. Authenticated fatal errors and rejected relay TLS

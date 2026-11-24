@@ -7,6 +7,7 @@ final class TunnelConfig {
     required this.bindHost,
     required this.ports,
     required this.tls,
+    this.timing = const TunnelTiming(),
   });
 
   final String relayHost;
@@ -16,6 +17,7 @@ final class TunnelConfig {
   final String bindHost;
   final List<int> ports;
   final bool tls;
+  final TunnelTiming timing;
 
   Map<String, Object> toJson() => {
     'relayHost': relayHost,
@@ -25,6 +27,34 @@ final class TunnelConfig {
     'bindHost': bindHost,
     'ports': ports,
     'tls': tls,
+    'timing': timing.toJson(),
+  };
+}
+
+final class TunnelTiming {
+  const TunnelTiming({
+    this.handshakeMs = 5000,
+    this.heartbeatMs = 2000,
+    this.pongMs = 7000,
+    this.reconnectMs = 4000,
+    this.maxReconnectMs = 30000,
+    this.jitterPercent = 10,
+  });
+
+  final int handshakeMs;
+  final int heartbeatMs;
+  final int pongMs;
+  final int reconnectMs;
+  final int maxReconnectMs;
+  final int jitterPercent;
+
+  Map<String, int> toJson() => {
+    'handshakeMs': handshakeMs,
+    'heartbeatMs': heartbeatMs,
+    'pongMs': pongMs,
+    'reconnectMs': reconnectMs,
+    'maxReconnectMs': maxReconnectMs,
+    'jitterPercent': jitterPercent,
   };
 }
 

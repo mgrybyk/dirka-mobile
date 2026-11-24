@@ -15,6 +15,10 @@ use tokio::{
 };
 use tokio_rustls::rustls::RootCertStore;
 
+// These tests briefly release reserved ports to configure the JS fixture and
+// mobile listeners. Serialize them to avoid another fixture claiming that port.
+static PORT_FIXTURES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RelayConfig {
@@ -77,6 +81,7 @@ impl Fixture {
             bind_host: "127.0.0.1".into(),
             ports,
             tls,
+            timing: Default::default(),
         }
     }
 
@@ -167,12 +172,17 @@ async fn round_trip(local: u16, marker: u8) {
 
 #[tokio::test]
 async fn independent_clients_forward_clean_up_and_reconnect() {
+    let _ports = PORT_FIXTURES.lock().await;
     let mut relay = Fixture::launch(false);
     let (one, two, three) = (reserve(), reserve(), reserve());
     let (first, second, third) = (port(&one), port(&two), port(&three));
     drop((one, two, three));
     let mut a = Client::spawn(relay.config("127.0.0.1", vec![first, second], false), None);
-    let mut b = Client::spawn(relay.config("127.0.0.1", vec![third], false), None);
+    let mut config = relay.config("127.0.0.1", vec![third], false);
+    config.timing.reconnect_ms = 100;
+    config.timing.max_reconnect_ms = 300;
+    config.timing.jitter_percent = 0;
+    let mut b = Client::spawn(config, None);
 
     status(&a, Status::WaitingForAgent).await;
     status(&b, Status::WaitingForAgent).await;
@@ -207,7 +217,9 @@ async fn independent_clients_forward_clean_up_and_reconnect() {
     relay.send("stop-relay");
     status(&b, Status::Connecting).await;
     relay.send("start-relay");
-    status(&b, Status::Connected).await;
+    timeout(Duration::from_secs(3), status(&b, Status::Connected))
+        .await
+        .expect("the client uses the configured reconnect delay");
     round_trip(third, 0).await;
     b.stop();
     status(&b, Status::Stopped).await;
@@ -216,6 +228,7 @@ async fn independent_clients_forward_clean_up_and_reconnect() {
 
 #[tokio::test]
 async fn verified_tls_rejects_untrusted_roots_and_wrong_hostname() {
+    let _ports = PORT_FIXTURES.lock().await;
     let mut relay = Fixture::launch(true);
     relay.send("start-agent");
     let (one, two, three) = (reserve(), reserve(), reserve());
@@ -248,6 +261,7 @@ async fn verified_tls_rejects_untrusted_roots_and_wrong_hostname() {
 
 #[tokio::test]
 async fn bind_failure_releases_listeners_opened_earlier() {
+    let _ports = PORT_FIXTURES.lock().await;
     let (one, two) = (reserve(), reserve());
     let (available, occupied) = (port(&one), port(&two));
     drop(one);
@@ -260,15 +274,12 @@ async fn bind_failure_releases_listeners_opened_earlier() {
             bind_host: "127.0.0.1".into(),
             ports: vec![available, occupied],
             tls: false,
+            timing: Default::default(),
         },
         None,
     );
     let stopped = status(&client, Status::Stopped).await;
-    assert!(
-        stopped
-            .error
-            .unwrap()
-            .contains(&format!("127.0.0.1:{occupied}"))
-    );
+    let error = stopped.error.unwrap();
+    assert!(error.contains(&format!("127.0.0.1:{occupied}")), "{error}");
     let _available_to_rebind = TcpListener::bind(("127.0.0.1", available)).await.unwrap();
 }
