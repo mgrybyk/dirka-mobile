@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dirka_mobile/app_info/app_info.dart';
 import 'package:dirka_mobile/clients/client_repository.dart';
 import 'package:dirka_mobile/main.dart';
@@ -41,29 +43,38 @@ class _MemoryRepository implements ClientRepository {
   }
 }
 
-class _Engine implements TunnelEngine {
-  final clients = <_Client>[];
+class _Runtime implements TunnelRuntime {
+  final _updates = StreamController<Map<int, TunnelState>>.broadcast();
+  final _active = <int, TunnelState>{};
+  final stopped = <int>[];
 
   @override
-  Future<TunnelClient> start(TunnelConfig config) async {
-    final client = _Client();
-    clients.add(client);
-    return client;
+  Stream<Map<int, TunnelState>> get states => Stream.multi((listener) {
+    listener.add(Map.of(_active));
+    final updates = _updates.stream.listen(listener.add);
+    listener.onCancel = updates.cancel;
+  });
+
+  @override
+  Future<void> start(int id, TunnelConfig config) async {
+    _active[id] = (
+      status: TunnelStatus.waitingForAgent,
+      active: true,
+      stopping: false,
+      error: null,
+    );
+    _updates.add(Map.of(_active));
   }
-}
-
-class _Client implements TunnelClient {
-  TunnelStatus status = TunnelStatus.waitingForAgent;
-  bool disposed = false;
 
   @override
-  TunnelSnapshot snapshot() => (status: status, error: null);
+  Future<void> stop(int id) async {
+    stopped.add(id);
+    _active.remove(id);
+    _updates.add(Map.of(_active));
+  }
 
   @override
-  void stop() => status = TunnelStatus.stopped;
-
-  @override
-  void dispose() => disposed = true;
+  Future<void> clearStopped(int id) async {}
 }
 
 final _source =
@@ -80,7 +91,11 @@ void main() {
   testWidgets('opens Settings and About from the app menu', (tester) async {
     final info = _AppInfo();
     await tester.pumpWidget(
-      DirkaApp(repository: _MemoryRepository(), appInfo: info),
+      DirkaApp(
+        repository: _MemoryRepository(),
+        appInfo: info,
+        runtime: _Runtime(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -113,7 +128,9 @@ void main() {
     final dispatcher = tester.platformDispatcher;
     dispatcher.platformBrightnessTestValue = Brightness.dark;
     addTearDown(dispatcher.clearPlatformBrightnessTestValue);
-    await tester.pumpWidget(DirkaApp(repository: _MemoryRepository()));
+    await tester.pumpWidget(
+      DirkaApp(repository: _MemoryRepository(), runtime: _Runtime()),
+    );
     await tester.pumpAndSettle();
 
     final title = find.text('Dirka');
@@ -126,7 +143,7 @@ void main() {
     tester,
   ) async {
     final store = _MemoryRepository();
-    await tester.pumpWidget(DirkaApp(repository: store));
+    await tester.pumpWidget(DirkaApp(repository: store, runtime: _Runtime()));
     await tester.pumpAndSettle();
 
     await _tap(tester, 'Add client');
@@ -163,8 +180,8 @@ void main() {
     'keeps a draft if secure storage fails and locks active entries',
     (tester) async {
       final store = _MemoryRepository()..failWrites = true;
-      final engine = _Engine();
-      await tester.pumpWidget(DirkaApp(repository: store, engine: engine));
+      final runtime = _Runtime();
+      await tester.pumpWidget(DirkaApp(repository: store, runtime: runtime));
       await tester.pumpAndSettle();
 
       await _tap(tester, 'Add client');
@@ -201,7 +218,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, 'Disconnect');
       await tester.pump(const Duration(milliseconds: 250));
-      expect(engine.clients.single.disposed, isTrue);
+      expect(runtime.stopped, [store.stored.clients.single.id]);
     },
   );
 }

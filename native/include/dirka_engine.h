@@ -29,8 +29,11 @@ int32_t dirka_client_snapshot(const dirka_client *client, uint8_t *out, size_t c
 /* Requests asynchronous cancellation. Safe to repeat until destruction. */
 void dirka_client_stop(dirka_client *client);
 
+/* Can advance a pending reconnect when the default network becomes usable. */
+void dirka_client_network_available(const dirka_client *client);
+
 /* Consumes the handle exactly once and also requests cancellation. NULL is
- * a no-op. Suitable as a Dart native finalizer. */
+ * a no-op. */
 void dirka_client_destroy(dirka_client *client);
 
 /* Serialize all calls on a particular handle and never race destruction

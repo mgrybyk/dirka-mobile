@@ -5,6 +5,7 @@ const { randomBytes } = require('node:crypto')
 const { execFileSync } = require('node:child_process')
 const { once } = require('node:events')
 const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const http = require('node:http')
 const net = require('node:net')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
@@ -18,6 +19,7 @@ const { getAgentConfig, getRelayConfig } = require(upstream + '/config.js')
 
 const device = process.argv.includes('--device')
 const useTls = process.argv.includes('--tls')
+const browser = device && process.argv.includes('--browser')
 const cryptKey = randomBytes(16).toString('hex')
 const route = 'dirka-interop'
 const greeting = Buffer.from([0, 255, 10, 128])
@@ -38,7 +40,14 @@ async function main() {
     socket.pipe(socket)
   })
   const targetPort = await listen(echo(greeting))
-  const secondTargetPort = await listen(echo(Buffer.from([1, ...greeting.subarray(1)])))
+  const secondTarget = browser
+    ? http.createServer((request, response) => {
+      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+      response.end('Dirka forwarded this browser request.\n')
+      if (request.url === '/dirka-background-check') console.error('Dirka browser forwarding verified.')
+    })
+    : echo(Buffer.from([1, ...greeting.subarray(1)]))
+  const secondTargetPort = await listen(secondTarget)
   // The JS relay takes a configured fixed port. Reserve one until its startup.
   const reserve = net.createServer()
   const relayPort = await listen(reserve)
@@ -99,11 +108,10 @@ async function main() {
   const config = { relayPort: clientPort, route, key: cryptKey, caPath }
   if (device) {
     await startAgent()
-    report(config)
     console.error('Enter this temporary configuration with the development host’s LAN address and TLS off.')
-    return
   }
   report(config)
+  if (device && !process.argv.includes('--control')) return
   for await (const line of readline.createInterface({ input: process.stdin })) {
     if (line === 'start-agent') await startAgent()
     if (line === 'stop-agent') await agent.close({ force: true })

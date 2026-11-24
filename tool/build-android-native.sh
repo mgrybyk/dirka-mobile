@@ -38,3 +38,7 @@ cargo build --locked --release --target "$target" --target-dir native/target --m
 install -d "$destination/arm64-v8a"
 install -m 644 "native/target/$target/release/libdirka_engine.so" "$destination/arm64-v8a/"
 install -m 644 "$DIRKA_UPSTREAM_TARGET_DIR/$target/release/libnode_tunnel_client.so" "$destination/arm64-v8a/"
+
+"$linker" -shared -fPIC -Wall -Wextra -Werror -Wl,-z,defs,-soname,libdirka_android.so \
+  -I "$root/native/include" "$root/android/app/src/main/native/tunnel_bridge.c" \
+  -L "$destination/arm64-v8a" -ldirka_engine -o "$destination/arm64-v8a/libdirka_android.so"

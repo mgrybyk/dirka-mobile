@@ -17,13 +17,13 @@ enum _Action { edit, duplicate, delete }
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({
-    required this.engine,
+    required this.runtime,
     required this.repository,
     required this.appInfo,
     super.key,
   });
 
-  final TunnelEngine engine;
+  final TunnelRuntime runtime;
   final ClientRepository repository;
   final AppInfo appInfo;
 
@@ -32,7 +32,7 @@ class ClientsScreen extends StatefulWidget {
 }
 
 class _ClientsScreenState extends State<ClientsScreen> {
-  late final _controller = ClientsController(widget.repository, widget.engine);
+  late final _controller = ClientsController(widget.repository, widget.runtime);
 
   @override
   void initState() {
@@ -133,7 +133,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
   Widget _clientCard(BuildContext context, ClientEntry entry) {
     final runtime = _controller.runtime(entry.id);
     final active = runtime?.active ?? false;
-    final status = runtime?.state.status ?? TunnelStatus.stopped;
+    final status = runtime?.status ?? TunnelStatus.stopped;
+    final commandPending = _controller.commandPending(entry.id);
     final config = entry.config.tunnel;
     final theme = Theme.of(context);
     return Card(
@@ -173,7 +174,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   itemBuilder: (context) => [
                     PopupMenuItem(
                       value: _Action.edit,
-                      enabled: !active,
+                      enabled: !active && !commandPending,
                       child: const Text('Edit'),
                     ),
                     const PopupMenuItem(
@@ -182,7 +183,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     ),
                     PopupMenuItem(
                       value: _Action.delete,
-                      enabled: !active,
+                      enabled: !active && !commandPending,
                       child: const Text('Delete'),
                     ),
                   ],
@@ -193,17 +194,17 @@ class _ClientsScreenState extends State<ClientsScreen> {
             ClientStatus(status: status, stopping: runtime?.stopping ?? false),
             Text('Bind host: ${config.bindHost}'),
             Text('Ports: ${entry.config.portsText}'),
-            if (runtime?.state.error case final error?)
+            if (_controller.commandError(entry.id) ?? runtime?.error
+                case final error?)
               Text(error, style: TextStyle(color: theme.colorScheme.error)),
             const SizedBox(height: 8),
             Align(
               alignment: AlignmentDirectional.centerEnd,
               child: FilledButton.tonal(
-                onPressed:
-                    (runtime?.starting ?? false) || (runtime?.stopping ?? false)
+                onPressed: commandPending || (runtime?.stopping ?? false)
                     ? null
                     : active
-                    ? runtime!.stop
+                    ? () => _controller.disconnect(entry.id)
                     : _controller.saving
                     ? null
                     : () => _controller.connect(entry),

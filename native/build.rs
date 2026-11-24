@@ -97,6 +97,9 @@ fn main() {
         library_directory.display()
     );
     println!("cargo:rustc-link-lib=dylib=node_tunnel_client");
+    if target_os == "android" {
+        println!("cargo:rustc-link-arg-cdylib=-Wl,-soname,libdirka_engine.so");
+    }
     if target_os == "linux" {
         println!(
             "cargo:rustc-link-arg=-Wl,-rpath,{}",

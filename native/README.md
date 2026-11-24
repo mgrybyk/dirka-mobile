@@ -2,10 +2,10 @@
 
 The pinned node-tunnel source is fetched to `.upstream/node-tunnel`.
 `build.rs` builds its locked Rust library and links the existing C ABI.
-The Android build packages `libdirka_engine.so` and its dependency
-`libnode_tunnel_client.so` under `lib/arm64-v8a`. Both are build outputs.
-The checked-in [C header](include/dirka_engine.h) defines the
-hand-written Dart binding. The build reads the protocol version from the
+The Android build packages the JNI bridge `libdirka_android.so`, the engine
+`libdirka_engine.so`, and the upstream protocol library
+`libnode_tunnel_client.so` under `lib/arm64-v8a`. The checked-in
+[C header](include/dirka_engine.h) defines the native interface. The build reads the protocol version from the
 pinned upstream Rust source. Its metadata and license exports point to
 immutable UTF-8 data for the process lifetime. The bundled dependency
 notices are generated from the locked Android Rust graphs using
@@ -23,10 +23,12 @@ for the process lifetime.
 
 The caller serializes calls on one client handle and destroys it exactly
 once. Rust copies the start input before returning. Snapshot bytes are
-caller-owned. Dart starts the engine on a worker isolate, reads snapshots
-and sends stop requests from the owning isolate, and attaches a native
-finalizer for abandoned handles. Destruction requests cancellation, and
-polling `stopped` after an explicit stop confirms cleanup before rebinding.
+caller-owned. The Android foreground service serializes JNI calls on its
+dedicated worker, and Flutter subscribes to service snapshots. Dart FFI
+accesses immutable engine metadata. Destruction requests cancellation.
+After an explicit stop, the service waits for `stopped` before releasing
+the handle and exposing the port for another start. A default-network
+signal can advance a pending reconnect without restarting a healthy socket.
 FFI entry points catch Rust unwinds. A worker panic becomes a sanitized
 terminal error. Invalid pointers and process-aborting failures remain
 outside this contract.
@@ -39,7 +41,7 @@ connections. The Android app uses these roots. Device-added CAs are
 outside its trust policy. Host tests inject a temporary test CA. Serde and
 Serde JSON marshal the C ABI configuration, snapshots, and existing upstream
 exchange messages. Dart uses the official `material_ui` package from the
-Flutter template and `ffi` for native buffer allocation.
+Flutter template and `ffi` to decode borrowed native metadata.
 
 Each client uses upstream default heartbeat, setup, and reconnect timings
 unless the validated configuration supplies overrides. The engine limits

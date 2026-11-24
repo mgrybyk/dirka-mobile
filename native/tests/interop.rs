@@ -227,6 +227,42 @@ async fn independent_clients_forward_clean_up_and_reconnect() {
 }
 
 #[tokio::test]
+async fn a_new_network_advances_backoff_without_interrupting_healthy_sockets() {
+    let _ports = PORT_FIXTURES.lock().await;
+    let mut relay = Fixture::launch(false);
+    relay.send("start-agent");
+    let reservation = reserve();
+    let local = port(&reservation);
+    drop(reservation);
+    let mut config = relay.config("127.0.0.1", vec![local], false);
+    config.timing.reconnect_ms = 20_000;
+    config.timing.jitter_percent = 0;
+    let mut client = Client::spawn(config, None);
+
+    status(&client, Status::Connected).await;
+    let mut stream = connect(local, 0).await;
+    client.network_available();
+    stream.write_all(b"still open").await.unwrap();
+    let mut echo = [0; 10];
+    timeout(Duration::from_secs(2), stream.read_exact(&mut echo))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&echo, b"still open");
+
+    relay.send("stop-relay");
+    status(&client, Status::Connecting).await;
+    relay.send("start-relay");
+    client.network_available();
+    timeout(Duration::from_secs(3), status(&client, Status::Connected))
+        .await
+        .expect("the network signal wakes the existing retry");
+    round_trip(local, 0).await;
+    client.stop();
+    status(&client, Status::Stopped).await;
+}
+
+#[tokio::test]
 async fn verified_tls_rejects_untrusted_roots_and_wrong_hostname() {
     let _ports = PORT_FIXTURES.lock().await;
     let mut relay = Fixture::launch(true);

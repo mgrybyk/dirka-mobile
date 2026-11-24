@@ -5,15 +5,16 @@ import 'app_info/android_app_info.dart';
 import 'app_info/app_info.dart';
 import 'clients/client_repository.dart';
 import 'clients/clients_screen.dart';
-import 'tunnel/native_tunnel_engine.dart';
+import 'tunnel/android_tunnel_runtime.dart';
+import 'tunnel/native_engine_info.dart';
 import 'tunnel/tunnel_engine.dart';
 
 void main() {
   LicenseRegistry.addLicense(() async* {
     try {
-      final info = await NativeTunnelEngine.loadInfo();
+      final info = await NativeEngineInfo.loadInfo();
       yield LicenseEntryWithLineBreaks(['node-tunnel'], info.upstreamLicense);
-      for (final license in await NativeTunnelEngine.loadDependencyLicenses()) {
+      for (final license in await NativeEngineInfo.loadDependencyLicenses()) {
         yield LicenseEntryWithLineBreaks(license.packages, license.text);
       }
     } on Object {
@@ -25,13 +26,13 @@ void main() {
 
 class DirkaApp extends StatelessWidget {
   const DirkaApp({
-    this.engine = const NativeTunnelEngine(),
+    this.runtime = const AndroidTunnelRuntime(),
     this.repository = const SecureClientRepository(),
     this.appInfo = const AndroidAppInfo(),
     super.key,
   });
 
-  final TunnelEngine engine;
+  final TunnelRuntime runtime;
   final ClientRepository repository;
   final AppInfo appInfo;
 
@@ -45,7 +46,7 @@ class DirkaApp extends StatelessWidget {
         brightness: Brightness.dark,
       ),
       home: ClientsScreen(
-        engine: engine,
+        runtime: runtime,
         repository: repository,
         appInfo: appInfo,
       ),

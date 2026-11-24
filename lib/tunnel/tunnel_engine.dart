@@ -69,14 +69,17 @@ enum TunnelStatus {
   final String label;
 }
 
-typedef TunnelSnapshot = ({TunnelStatus status, String? error});
+typedef TunnelState = ({
+  TunnelStatus status,
+  bool active,
+  bool stopping,
+  String? error,
+});
 
-abstract interface class TunnelEngine {
-  Future<TunnelClient> start(TunnelConfig config);
-}
-
-abstract interface class TunnelClient {
-  TunnelSnapshot snapshot();
-  void stop();
-  void dispose();
+abstract interface class TunnelRuntime {
+  /// Emits the current states when subscribed, then changes made by the owner.
+  Stream<Map<int, TunnelState>> get states;
+  Future<void> start(int id, TunnelConfig config);
+  Future<void> stop(int id);
+  Future<void> clearStopped(int id);
 }

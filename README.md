@@ -57,8 +57,8 @@ adb -s DEVICE_SERIAL install -r build/app/outputs/flutter-apk/app-release.apk
 flutter test integration_test/app_test.dart -d DEVICE_SERIAL
 ```
 
-The integration test checks both encrypted storage and native bind-conflict
-reporting. Use this procedure for a binary round trip.
+The integration test checks encrypted storage, bind-conflict reporting, and
+reattachment to a client owned by the Android service. Use this procedure for a binary round trip.
 
 1. Run `node tool/interop-relay.cjs --device` on the development host.
    It starts the pinned JavaScript relay and agent plus two loopback echo
@@ -84,6 +84,16 @@ reporting. Use this procedure for a binary round trip.
    round trip, use a reachable TLS-terminating relay with a hostname and
    certificate chain trusted by Mozilla and a binary echo target.
 
+To verify forwarding while another app is in use, run the same fixture with
+`--device --browser`, set `N_T_CLIENT_PORTS=18080,18081`, and connect. Open
+`http://127.0.0.1:18081/dirka-background-check` in the device's browser with
+the screen unlocked. The browser displays the forwarded response and the
+fixture reports the request. The binary check still works on port 18080.
+Return via the **Dirka** notification and disconnect. Check that the
+notification disappears and the ports can be reused. Add `--control` to the
+fixture to accept `stop-relay` and `start-relay` on standard input for testing
+reconnects while Dirka stays in the background.
+
 ## Saved configurations
 
 Paste the supported fields from node-tunnel's `client.env`. Explicit bind
@@ -107,13 +117,22 @@ client to edit or delete it.
 
 ## Architecture and releases
 
-Flutter manages saved configurations and supervises each client handle.
-Rust owns listeners, relay
-connections, retries, TLS, and forwarding. A small C ABI carries
-configuration, state, and cancellation. The upstream shared library handles
-authenticated protocol operations through its existing C ABI. Gradle generates
-and packages both shared libraries. See [native/README.md](native/README.md)
-for ownership, dependency choices, and protocol limits.
+Flutter manages saved configurations and displays the state published by
+a single Android foreground service. The service owns the native handles
+through JNI. Rust owns listeners, relay connections, retries, TLS, and
+forwarding, and uses the existing upstream protocol library. See
+[native/README.md](native/README.md) for the ABI and protocol limits.
+
+The service uses Android's `specialUse` foreground service type for
+user-started, ongoing TCP forwarding while another app uses the ports.
+It starts from the visible app and stays active until the last client stops.
+[Android foreground service types](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use)
+
+On Android 13 and later, allow notifications to see the active-client count
+in the notification drawer. If permission is denied, forwarding continues
+and Android shows the foreground service under Active apps. A new default
+network can wake a pending reconnect. Healthy connections stay open until
+a socket or protocol event changes their state.
 
 For an upstream update, verify the PR commit on GitHub and update
 `native/upstream.rev`. Run `tool/fetch-upstream.sh`, the native checks, and
@@ -132,5 +151,7 @@ Android requires matching signatures for `adb install -r`. CI runs generate
 a fresh debug key, so use a consistently signed local build if retaining
 an existing installation across builds.
 
-The screen owns live handles until Android foreground service supervision is
-implemented. Saved entries load disconnected after a process restart.
+Switching away from Dirka and reopening it preserves running clients while
+the service lives. Saved entries load disconnected after a process restart
+or a reboot. Android can stop the service, and prolonged screen-off
+operation depends on the device.

@@ -98,6 +98,15 @@ unsafe extern "C" fn dirka_client_stop(client: *mut Client) {
 }
 
 #[unsafe(no_mangle)]
+unsafe extern "C" fn dirka_client_network_available(client: *const Client) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if let Some(client) = unsafe { client.as_ref() } {
+            client.network_available();
+        }
+    }));
+}
+
+#[unsafe(no_mangle)]
 unsafe extern "C" fn dirka_client_destroy(client: *mut Client) {
     let _ = catch_unwind(AssertUnwindSafe(|| {
         if !client.is_null() {

@@ -112,6 +112,8 @@ androidComponents {
                 projectRoot.file("native/third_party_licenses.json"),
             )
             inputs.dir(projectRoot.dir("native/src"))
+            inputs.dir(projectRoot.dir("native/include"))
+            inputs.dir(projectRoot.dir("android/app/src/main/native"))
         }
         variant.sources.jniLibs?.addGeneratedSourceDirectory(nativeBuild, BuildDirkaNative::libraries)
     }

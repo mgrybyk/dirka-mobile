@@ -51,11 +51,13 @@ pub struct Snapshot {
 pub struct Client {
     stop: Option<oneshot::Sender<()>>,
     state: watch::Receiver<Snapshot>,
+    network: watch::Sender<()>,
 }
 
 impl Client {
     pub fn spawn(config: Config, roots: Option<RootCertStore>) -> Self {
         let (stop, mut cancel) = oneshot::channel();
+        let (network, mut network_changes) = watch::channel(());
         let (state, receiver) = watch::channel(Snapshot {
             status: Status::Connecting,
             error: None,
@@ -71,7 +73,7 @@ impl Client {
                     _ = &mut cancel => return None,
                 };
                 let error = tokio::select! {
-                    error = runtime.run() => Some(error),
+                    error = runtime.run(&mut network_changes) => Some(error),
                     _ = &mut cancel => None,
                 };
                 runtime.listeners.shutdown().await;
@@ -89,6 +91,7 @@ impl Client {
         Self {
             stop: Some(stop),
             state: receiver,
+            network,
         }
     }
 
@@ -96,6 +99,10 @@ impl Client {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
+    }
+
+    pub fn network_available(&self) {
+        self.network.send_replace(());
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -281,9 +288,10 @@ impl<'a> Engine<'a> {
         self.state.send_replace(Snapshot { status, error });
     }
 
-    async fn run(&mut self) -> String {
+    async fn run(&mut self, network: &mut watch::Receiver<()>) -> String {
         let mut delay = self.timing.reconnect;
         loop {
+            network.borrow_and_update();
             let retry = match self.session(&mut delay).await {
                 Err(SessionError::Retry(error)) => error,
                 Err(SessionError::Fatal(error)) => return error.into(),
@@ -301,6 +309,7 @@ impl<'a> Engine<'a> {
             loop {
                 tokio::select! {
                     _ = sleep_until(retry_at) => break,
+                    Ok(()) = network.changed() => break,
                     Some(_) = self.local.recv() => {},
                     Some(_) = self.data.join_next() => {},
                 }

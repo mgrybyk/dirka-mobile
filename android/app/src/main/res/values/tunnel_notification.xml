@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Dirka</string>
+    <string name="tunnel_notification_channel">Active clients</string>
+    <plurals name="tunnel_active_clients">
+        <item quantity="one">%d active client</item>
+        <item quantity="other">%d active clients</item>
+    </plurals>
+</resources>
