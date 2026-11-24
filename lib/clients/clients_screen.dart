@@ -2,10 +2,16 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 
+import '../app_info/about_screen.dart';
+import '../app_info/app_info.dart';
+import '../app_info/settings_screen.dart';
 import '../tunnel/tunnel_engine.dart';
 import 'client_editor.dart';
 import 'client_repository.dart';
+import 'client_status.dart';
 import 'clients_controller.dart';
+
+enum _AppAction { settings, about }
 
 enum _Action { edit, duplicate, delete }
 
@@ -13,11 +19,13 @@ class ClientsScreen extends StatefulWidget {
   const ClientsScreen({
     required this.engine,
     required this.repository,
+    required this.appInfo,
     super.key,
   });
 
   final TunnelEngine engine;
   final ClientRepository repository;
+  final AppInfo appInfo;
 
   @override
   State<ClientsScreen> createState() => _ClientsScreenState();
@@ -38,7 +46,22 @@ class _ClientsScreenState extends State<ClientsScreen> {
     builder: (context, _) {
       final canAdd = _controller.ready && !_controller.saving;
       return Scaffold(
-        appBar: AppBar(title: const Text('Dirka')),
+        appBar: AppBar(
+          title: const Text('Dirka'),
+          actions: [
+            PopupMenuButton<_AppAction>(
+              tooltip: 'App menu',
+              onSelected: _openAppPage,
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _AppAction.settings,
+                  child: Text('Settings'),
+                ),
+                PopupMenuItem(value: _AppAction.about, child: Text('About')),
+              ],
+            ),
+          ],
+        ),
         floatingActionButton: _controller.entries.isEmpty || !canAdd
             ? null
             : FloatingActionButton.extended(
@@ -167,12 +190,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                runtime?.stopping ?? false ? 'Disconnecting…' : status.label,
-              ),
-            ),
+            ClientStatus(status: status, stopping: runtime?.stopping ?? false),
             Text('Bind host: ${config.bindHost}'),
             Text('Ports: ${entry.config.portsText}'),
             if (runtime?.state.error case final error?)
@@ -196,6 +214,15 @@ class _ClientsScreenState extends State<ClientsScreen> {
         ),
       ),
     );
+  }
+
+  void _openAppPage(_AppAction action) {
+    final page = switch (action) {
+      _AppAction.settings => const SettingsScreen(),
+      _AppAction.about => AboutScreen(info: widget.appInfo),
+    };
+    Navigator.of(context)
+        .push<void>(MaterialPageRoute(builder: (context) => page));
   }
 
   Future<void> _openEditor([ClientEntry? entry, bool duplicate = false]) =>

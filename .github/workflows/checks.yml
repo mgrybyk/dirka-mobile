@@ -18,6 +18,7 @@ jobs:
         with:
           node-version: '26.13.0'
       - run: tool/fetch-upstream.sh
+      - run: node tool/native-licenses.cjs --check
       - run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path native/Cargo.toml --locked

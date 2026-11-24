@@ -10,6 +10,12 @@ extern "C" {
 
 typedef struct dirka_client dirka_client;
 
+/* Returns immutable, NUL-terminated UTF-8 data borrowed for the process
+ * lifetime. No handle is required. Callers must not free or mutate it. */
+const char *dirka_engine_metadata(void);
+const char *dirka_engine_upstream_license(void);
+const char *dirka_engine_dependency_licenses(void);
+
 /* Length-delimited UTF-8 JSON (up to 4096 bytes), borrowed only for this call.
  * Returns NULL for malformed input or engine initialization failure. Relay
  * and bind validation run asynchronously. Call off the UI thread. */

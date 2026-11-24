@@ -1,8 +1,31 @@
+import 'package:dirka_mobile/app_info/app_info.dart';
 import 'package:dirka_mobile/clients/client_repository.dart';
 import 'package:dirka_mobile/main.dart';
 import 'package:dirka_mobile/tunnel/tunnel_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+
+class _AppInfo implements AppInfo {
+  int repositoryOpens = 0;
+
+  @override
+  Future<AppVersion> loadAppVersion() async =>
+      (version: '2.1.4', buildNumber: '37');
+
+  @override
+  Future<EngineInfo> loadEngineInfo() async => (
+    engineVersion: '0.8.1',
+    protocolVersion: 12,
+    upstreamRevision: 'test-revision',
+    upstreamLicense: 'test-license',
+  );
+
+  @override
+  Future<bool> openUpstreamRepository() async {
+    repositoryOpens++;
+    return true;
+  }
+}
 
 class _MemoryRepository implements ClientRepository {
   StoredClients stored = const StoredClients();
@@ -54,6 +77,38 @@ N_T_CLIENT_PORTS=8080
 ''';
 
 void main() {
+  testWidgets('opens Settings and About from the app menu', (tester) async {
+    final info = _AppInfo();
+    await tester.pumpWidget(
+      DirkaApp(repository: _MemoryRepository(), appInfo: info),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('App menu'));
+    await tester.pumpAndSettle();
+    await _tap(tester, 'Settings');
+    expect(find.text('Settings'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('App menu'));
+    await tester.pumpAndSettle();
+    await _tap(tester, 'About');
+    expect(find.text('2.1.4 (build 37)'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('0.8.1'), findsOneWidget);
+    expect(find.text('test-revision'), findsOneWidget);
+    await _tap(tester, 'node-tunnel on GitHub');
+    expect(info.repositoryOpens, 1);
+    await _tap(tester, 'Open-source licenses');
+    expect(find.byType(LicensePage), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Dirka'), findsOneWidget);
+  });
+
   testWidgets('shows Dirka and follows system brightness', (tester) async {
     final dispatcher = tester.platformDispatcher;
     dispatcher.platformBrightnessTestValue = Brightness.dark;

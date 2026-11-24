@@ -109,6 +109,7 @@ androidComponents {
                 projectRoot.file("native/Cargo.lock"),
                 projectRoot.file("native/build.rs"),
                 projectRoot.file("native/upstream.rev"),
+                projectRoot.file("native/third_party_licenses.json"),
             )
             inputs.dir(projectRoot.dir("native/src"))
         }

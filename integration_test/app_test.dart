@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:dirka_mobile/app_info/android_app_info.dart';
 import 'package:dirka_mobile/clients/client_repository.dart';
 import 'package:dirka_mobile/main.dart';
 import 'package:dirka_mobile/tunnel/native_tunnel_engine.dart';
@@ -11,6 +12,27 @@ import 'package:integration_test/integration_test.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('reads package and pinned engine metadata on Android', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      const info = AndroidAppInfo();
+      final version = await info.loadAppVersion();
+      expect(version.version, isNotEmpty);
+      expect(int.tryParse(version.buildNumber), greaterThan(0));
+      final engine = await info.loadEngineInfo();
+      expect(engine.engineVersion, isNotEmpty);
+      expect(engine.protocolVersion, greaterThan(0));
+      expect(engine.upstreamRevision, matches(RegExp(r'^[a-f0-9]{40}$')));
+      expect(engine.upstreamLicense, contains('MIT License'));
+      final notices = await NativeTunnelEngine.loadDependencyLicenses();
+      expect(
+        notices.expand((notice) => notice.packages),
+        contains(startsWith('ring ')),
+      );
+    });
+  });
 
   testWidgets('launches Dirka on Android', (tester) async {
     await tester.pumpWidget(const DirkaApp());

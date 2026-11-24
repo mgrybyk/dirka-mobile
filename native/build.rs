@@ -30,6 +30,25 @@ fn main() {
     );
 
     let rust = upstream.join("rust");
+    // Upstream currently exposes the protocol version in Rust source only.
+    let wire = std::fs::read_to_string(rust.join("src/wire.rs")).unwrap();
+    let protocol = wire
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("pub const PROTOCOL_VERSION: u8 ="))
+        .and_then(|value| value.trim().strip_suffix(';'))
+        .and_then(|value| value.parse::<u8>().ok())
+        .expect("read PROTOCOL_VERSION from the pinned node-tunnel Rust source");
+    let license = upstream.join("LICENSE").canonicalize().unwrap();
+    println!("cargo:rerun-if-changed={}", license.display());
+    println!(
+        "cargo:rustc-env=DIRKA_UPSTREAM_LICENSE={}",
+        license.display()
+    );
+    println!("cargo:rustc-env=DIRKA_UPSTREAM_PROTOCOL={protocol}");
+    println!(
+        "cargo:rustc-env=DIRKA_UPSTREAM_REVISION={}",
+        revision.trim()
+    );
     println!("cargo:rerun-if-changed={}", revision_file.display());
     println!(
         "cargo:rerun-if-changed={}",

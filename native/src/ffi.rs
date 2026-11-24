@@ -1,4 +1,5 @@
 use std::{
+    ffi::c_char,
     panic::{AssertUnwindSafe, catch_unwind},
     ptr, slice,
     sync::OnceLock,
@@ -10,6 +11,35 @@ use crate::engine::{Client, Config};
 
 static RUNTIME: OnceLock<Option<Runtime>> = OnceLock::new();
 const MAX_CONFIG_BYTES: usize = 4096;
+
+#[unsafe(no_mangle)]
+extern "C" fn dirka_engine_metadata() -> *const c_char {
+    concat!(
+        "{\"engineVersion\":\"",
+        env!("CARGO_PKG_VERSION"),
+        "\",\"upstreamRevision\":\"",
+        env!("DIRKA_UPSTREAM_REVISION"),
+        "\",\"protocolVersion\":",
+        env!("DIRKA_UPSTREAM_PROTOCOL"),
+        "}\0"
+    )
+    .as_ptr()
+    .cast()
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn dirka_engine_upstream_license() -> *const c_char {
+    concat!(include_str!(env!("DIRKA_UPSTREAM_LICENSE")), "\0")
+        .as_ptr()
+        .cast()
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn dirka_engine_dependency_licenses() -> *const c_char {
+    concat!(include_str!("../third_party_licenses.json"), "\0")
+        .as_ptr()
+        .cast()
+}
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn dirka_client_start(input: *const u8, length: usize) -> *mut Client {

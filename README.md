@@ -117,7 +117,10 @@ for ownership, dependency choices, and protocol limits.
 
 For an upstream update, verify the PR commit on GitHub and update
 `native/upstream.rev`. Run `tool/fetch-upstream.sh`, the native checks, and
-the physical-device proof before accepting a new pin. Host fixtures use
+the physical-device proof before accepting a new pin. After updating either
+native lockfile or the upstream pin, regenerate the bundled Rust notices with
+`node tool/native-licenses.cjs`. About shows the installed app version, the
+engine build metadata, and the bundled licenses. Host fixtures use
 the pinned JavaScript relay and agent directly and need no npm install.
 
 GitHub Actions builds and publishes a debug-key-signed test APK for PRs,

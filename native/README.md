@@ -4,8 +4,12 @@ The pinned node-tunnel source is fetched to `.upstream/node-tunnel`.
 `build.rs` builds its locked Rust library and links the existing C ABI.
 The Android build packages `libdirka_engine.so` and its dependency
 `libnode_tunnel_client.so` under `lib/arm64-v8a`. Both are build outputs.
-The checked-in [C header](include/dirka_engine.h) defines the four functions
-mirrored in the hand-written Dart binding. There is no binding generator.
+The checked-in [C header](include/dirka_engine.h) defines the
+hand-written Dart binding. The build reads the protocol version from the
+pinned upstream Rust source. Its metadata and license exports point to
+immutable UTF-8 data for the process lifetime. The bundled dependency
+notices are generated from the locked Android Rust graphs using
+`node tool/native-licenses.cjs`.
 
 Each opaque client owns a cancellation sender and a state receiver.
 The native worker binds all requested ports before publishing relay state.
