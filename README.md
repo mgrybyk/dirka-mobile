@@ -5,28 +5,28 @@ Android-first Flutter client for node-tunnel. The Android application ID is
 
 ## Toolchain
 
-Use Flutter 3.50.1 (Dart 3.14.0), Rust 1.100.0 via rustup, Temurin JDK 25.0.5.1+2,
-Android SDK Platform 36, Build Tools 36.0.0, and NDK 28.2.13676358. The wrapper
-pins Gradle 9.5.0. The Flutter template pins AGP 9.3.1 and Kotlin 2.4.20.
-Host interoperability tests use Node 26.13.0 and the OpenSSL CLI.
-The secure-storage dependencies also use Android SDK Platform 35 and
-CMake 3.22.1.
+Use the latest stable patch in the Flutter release series selected by
+[CI](.github/actions/android-tools/action.yml), the Dart SDK bundled with it,
+and Temurin JDK 25. Host interoperability tests use Node 26 and the OpenSSL CLI.
 
-Install Rust with [rustup](https://rust-lang.org/tools/install/). The
-toolchain file selects Rust 1.100.0 and the Android ARM64 target. Set
-`JAVA_HOME` and `ANDROID_HOME` to your JDK and Android SDK if Flutter
-does not discover them. Android Studio is optional. Build on macOS or Linux.
+Install Rust with [rustup](https://rust-lang.org/tools/install/).
+`rust-toolchain.toml` selects the compiler and Android ARM64 target. Install
+the Android SDK Command-Line Tools and Platform-Tools. Set `JAVA_HOME` and
+`ANDROID_HOME` if Flutter has trouble finding your JDK or Android SDK. Gradle
+installs the Android SDK platforms, Build Tools, NDK, and CMake required by
+the build once the SDK licenses are accepted. Build on macOS or Linux.
 
 ```sh
-sdkmanager 'platform-tools' 'platforms;android-36' 'platforms;android-35' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+flutter doctor --android-licenses
 flutter pub get --enforce-lockfile
-flutter build apk --release
+flutter build apk --release --target-platform android-arm64
 ```
 
 The Android build fetches the pinned node-tunnel source on first use and
 packages the ARM64 engine. If Gradle fails while transforming `android.jar`,
-check that API 36 is fully installed in the SDK Flutter reports in
-`flutter doctor -v`. Reinstall `platforms;android-36` if its JAR is missing.
+use `flutter doctor -v` to identify the SDK and reinstall the platform named
+in the build error if its JAR is missing. The APK signing and verification
+scripts use the newest compatible stable Build Tools installed in that SDK.
 
 ## Checks
 
@@ -45,7 +45,7 @@ cargo test --manifest-path native/Cargo.toml --locked
 
 ## Physical device
 
-The APK targets ARM64 (Android 7.0/API 24 or later). Enable USB debugging
+The APK requires ARM64 and Android 13 (API 33) or later. Enable USB debugging
 and authorize the development computer. For wireless debugging, use
 `adb pair` and `adb connect` with the respective endpoints shown in Android
 Settings.
@@ -178,7 +178,7 @@ release. On macOS use `shasum -a 256 -c SHA256SUMS`.
 
 ```sh
 sha256sum -c SHA256SUMS
-adb -s DEVICE_SERIAL install -r dirka-v0.1.0-android-arm64.apk
+adb -s DEVICE_SERIAL install -r dirka-v0.1.1-android-arm64.apk
 ```
 
 Android requires the installed and incoming APKs to use the same signing

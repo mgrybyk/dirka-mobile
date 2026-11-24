@@ -92,14 +92,12 @@ class TunnelService : Service() {
     }
 
     private fun enterForeground() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            notifications.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL, getString(R.string.tunnel_notification_channel),
-                    NotificationManager.IMPORTANCE_LOW,
-                ),
-            )
-        }
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL, getString(R.string.tunnel_notification_channel),
+                NotificationManager.IMPORTANCE_LOW,
+            ),
+        )
         val count = activeCount()
         val notification = notification(count)
         if (Build.VERSION.SDK_INT >= 34) {
@@ -193,7 +191,6 @@ class TunnelService : Service() {
         }
     }
 
-    @Suppress("DEPRECATION")
     private fun notification(count: Int): Notification {
         val open = Intent(this, MainActivity::class.java)
             .setAction(Intent.ACTION_MAIN)
@@ -202,12 +199,9 @@ class TunnelService : Service() {
         val pendingOpen = PendingIntent.getActivity(
             this, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL)
-            else Notification.Builder(this).setPriority(Notification.PRIORITY_LOW)
-        if (Build.VERSION.SDK_INT >= 31) {
-            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-        }
-        return builder.setSmallIcon(R.drawable.ic_tunnel_status)
+        return Notification.Builder(this, CHANNEL)
+            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+            .setSmallIcon(R.drawable.ic_tunnel_status)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(resources.getQuantityString(R.plurals.tunnel_active_clients, count, count))
             .setContentIntent(pendingOpen)
@@ -265,8 +259,7 @@ class TunnelService : Service() {
             if (launchRequested) return
             try {
                 val intent = Intent(context, TunnelService::class.java)
-                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent)
-                else context.startService(intent)
+                context.startForegroundService(intent)
                 launchRequested = true
             } catch (_: RuntimeException) {
                 pending.remove(id)?.fill(0)

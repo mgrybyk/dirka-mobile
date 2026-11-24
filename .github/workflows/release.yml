@@ -50,7 +50,7 @@ jobs:
       - name: Build unsigned ARM64 APK
         env:
           DIRKA_UNSIGNED_RELEASE: '1'
-        run: flutter build apk --release
+        run: flutter build apk --release --target-platform android-arm64 --split-debug-info=build/symbols
       - name: Sign and verify the APK
         env:
           KEYSTORE_BASE64: ${{ secrets.DIRKA_RELEASE_KEYSTORE_BASE64 }}

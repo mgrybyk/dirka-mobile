@@ -127,7 +127,7 @@ flutter test
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test --locked
-flutter build apk --release
+flutter build apk --release --target-platform android-arm64
 ```
 
 Include native Android cross-build and packaging in the APK pipeline; a desktop Rust build alone is insufficient. Run checks on PRs; publish build artifacts and support manual builds. Signed GitHub Releases on tags or manual workflow dispatch. Keep signing keys/passwords in CI secrets; reuse signing identity for upgrades, separate debug/test builds from release builds. Signing setup may require owner action; do not fabricate secrets or publish automatically without configured credentials. No Play Store distribution. Document supported ABI(s), version/build number strategy and installation/update commands. No in-app updater.

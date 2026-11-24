@@ -2,7 +2,8 @@
 set -euo pipefail
 
 apk="${1:?usage: verify-android-apk.sh APK [expected-certificate-sha256]}"
-build_tools="${ANDROID_HOME:?Set ANDROID_HOME to your Android SDK.}/build-tools/36.0.0"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+build_tools="$(bash "$root/tool/find-android-build-tools.sh")"
 expected="${2:-}"
 
 entries="$(unzip -Z1 "$apk")"

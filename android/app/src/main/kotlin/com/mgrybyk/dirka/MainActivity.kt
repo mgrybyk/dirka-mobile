@@ -2,9 +2,7 @@ package com.mgrybyk.dirka
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.pm.PackageInfo
 import android.net.Uri
-import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -25,7 +23,7 @@ class MainActivity : FlutterActivity() {
                     result.success(
                         mapOf(
                             "version" to info.versionName,
-                            "buildNumber" to buildNumber(info).toString(),
+                            "buildNumber" to info.longVersionCode.toString(),
                         ),
                     )
                 }
@@ -52,15 +50,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == TunnelChannel.NOTIFICATION_REQUEST) {
-            TunnelService.notificationPermissionChanged()
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun buildNumber(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= 28) {
-        info.longVersionCode
-    } else {
-        info.versionCode.toLong()
+        tunnelChannel?.onRequestPermissionsResult(requestCode, grantResults)
     }
 }

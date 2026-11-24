@@ -3,7 +3,6 @@ package com.mgrybyk.dirka
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
-import android.os.Build
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -11,6 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 internal class TunnelChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val commands = MethodChannel(messenger, "com.mgrybyk.dirka/tunnels")
     private val events = EventChannel(messenger, "com.mgrybyk.dirka/tunnel_states")
+    private var notificationRequestPending = false
     private var observer: ((Map<Long, Map<String, Any?>>) -> Unit)? = null
 
     init {
@@ -61,14 +61,25 @@ internal class TunnelChannel(private val activity: Activity, messenger: BinaryMe
     }
 
     private fun requestNotifications() {
-        if (Build.VERSION.SDK_INT < 33 ||
+        if (notificationRequestPending ||
             activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) return
 
         val preferences = activity.getSharedPreferences("notification_prompt", Activity.MODE_PRIVATE)
         if (preferences.getBoolean("requested", false)) return
-        preferences.edit().putBoolean("requested", true).apply()
+        notificationRequestPending = true
         activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_REQUEST)
+    }
+
+    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
+        if (requestCode != NOTIFICATION_REQUEST) return
+        notificationRequestPending = false
+        val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        if (granted || activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+            activity.getSharedPreferences("notification_prompt", Activity.MODE_PRIVATE)
+                .edit().putBoolean("requested", true).apply()
+        }
+        TunnelService.notificationPermissionChanged()
     }
 
     private fun detachObserver() {
@@ -82,7 +93,7 @@ internal class TunnelChannel(private val activity: Activity, messenger: BinaryMe
         commands.setMethodCallHandler(null)
     }
 
-    companion object {
+    private companion object {
         const val NOTIFICATION_REQUEST = 1_001
     }
 }

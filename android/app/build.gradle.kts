@@ -15,8 +15,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
     }
 
     defaultConfig {
@@ -24,8 +24,8 @@ android {
         applicationId = "com.mgrybyk.dirka"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 33
+        targetSdk = 36
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -49,7 +49,7 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
     }
 }
 
@@ -92,13 +92,17 @@ abstract class BuildDirkaNative : DefaultTask() {
 
 val projectRoot = rootProject.layout.projectDirectory.dir("..")
 val configuredNdkVersion = flutter.ndkVersion
-val minAndroidSdk = flutter.minSdkVersion
 val prepareDirkaUpstream by tasks.registering(Exec::class) {
     commandLine("bash", projectRoot.file("tool/fetch-upstream.sh").asFile)
 }
 androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        // Compress native libraries to reduce the size of the downloadable APK.
+        variant.packaging.jniLibs.useLegacyPackaging.set(true)
+    }
     val installedNdk = sdkComponents.ndkDirectory
     onVariants { variant ->
+        val minAndroidSdk = variant.minSdk.apiLevel
         val taskName = "buildDirkaNative" + variant.name.replaceFirstChar { it.uppercaseChar() }
         val nativeBuild = tasks.register<BuildDirkaNative>(taskName) {
             dependsOn(prepareDirkaUpstream)

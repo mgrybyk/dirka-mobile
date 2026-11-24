@@ -13,11 +13,21 @@ esac
 
 bin="$ndk/toolchains/llvm/prebuilt/$host/bin"
 target=aarch64-linux-android
-linker="$bin/$target$min_sdk-clang"
-if [[ ! -x "$linker" ]]; then
-  echo "Android NDK compiler missing at $linker" >&2
+# Use the newest native API the NDK provides at or below the app's minimum SDK.
+native_api=0
+for compiler in "$bin/$target"[0-9]*-clang; do
+  [[ -x "$compiler" ]] || continue
+  api="${compiler#"$bin/$target"}"
+  api="${api%-clang}"
+  if (( api > native_api && api <= min_sdk )); then
+    native_api="$api"
+  fi
+done
+if (( native_api == 0 )); then
+  echo "No Android NDK compiler for $target at API $min_sdk or lower in $bin" >&2
   exit 1
 fi
+linker="$bin/$target$native_api-clang"
 
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$linker"
 export CC_aarch64_linux_android="$linker"

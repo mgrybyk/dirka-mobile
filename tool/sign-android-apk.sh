@@ -4,7 +4,7 @@ set -euo pipefail
 input="${1:?usage: sign-android-apk.sh UNSIGNED_APK OUTPUT_APK}"
 output="${2:?usage: sign-android-apk.sh UNSIGNED_APK OUTPUT_APK}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-build_tools="${ANDROID_HOME:?Set ANDROID_HOME to your Android SDK.}/build-tools/36.0.0"
+build_tools="$(bash "$root/tool/find-android-build-tools.sh")"
 
 : "${DIRKA_RELEASE_KEYSTORE:?Set DIRKA_RELEASE_KEYSTORE to the release keystore file.}"
 : "${DIRKA_RELEASE_STORE_PASSWORD:?Set DIRKA_RELEASE_STORE_PASSWORD.}"
@@ -13,7 +13,7 @@ build_tools="${ANDROID_HOME:?Set ANDROID_HOME to your Android SDK.}/build-tools/
 : "${DIRKA_RELEASE_CERT_SHA256:?Set DIRKA_RELEASE_CERT_SHA256 to the release certificate fingerprint.}"
 
 if "$build_tools/apksigner" verify "$input" >/dev/null 2>&1; then
-  echo "Use an unsigned build from DIRKA_UNSIGNED_RELEASE=1 flutter build apk --release." >&2
+  echo "Use an unsigned build from: DIRKA_UNSIGNED_RELEASE=1 flutter build apk --release --target-platform android-arm64 --split-debug-info=build/symbols" >&2
   exit 1
 fi
 
