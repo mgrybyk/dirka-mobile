@@ -44,7 +44,7 @@ jobs:
             echo "The tag must match the version in pubspec.yaml, which also needs a positive build number." >&2
             exit 1
           fi
-      - uses: gradle/actions/wrapper-validation@v5
+      - uses: gradle/actions/wrapper-validation@v6
       - uses: ./.github/actions/android-tools
       - run: flutter pub get --enforce-lockfile
       - name: Build unsigned ARM64 APK

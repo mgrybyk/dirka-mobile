@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '26.13.0'
-      - uses: gradle/actions/wrapper-validation@v5
+      - uses: gradle/actions/wrapper-validation@v6
       - uses: ./.github/actions/android-tools
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test integration_test
