@@ -94,6 +94,8 @@ notification disappears and the ports can be reused. Add `--control` to the
 fixture to accept `stop-relay` and `start-relay` on standard input for testing
 reconnects while Dirka stays in the background.
 
+[Recorded Android device checks](docs/android-acceptance.md)
+
 ## Saved configurations
 
 Paste the supported fields from node-tunnel's `client.env`. Explicit bind
@@ -142,14 +144,46 @@ native lockfile or the upstream pin, regenerate the bundled Rust notices with
 engine build metadata, and the bundled licenses. Host fixtures use
 the pinned JavaScript relay and agent directly and need no npm install.
 
-GitHub Actions builds and publishes a debug-key-signed test APK for PRs,
-main, and manual runs. The version name and build number come from
-`pubspec.yaml`. Increase the build number for releases. Public release
-signing needs the owner's release key, stored outside the repository and
-reused across upgrades. The signed-release workflow is part of Step 5.
-Android requires matching signatures for `adb install -r`. CI runs generate
-a fresh debug key, so use a consistently signed local build if retaining
-an existing installation across builds.
+## Releases
+
+The **Checks and Android APK** workflow runs on PRs, pushes to main, and
+manual runs. It publishes the debug-key-signed `dirka-android-arm64-test`
+artifact. GitHub runners generate a fresh debug key per run. Locally built
+test APKs reuse the machine's debug key.
+
+The **Signed Android release** workflow builds an unsigned APK and signs
+it after compilation. It publishes the APK and `SHA256SUMS` to GitHub Releases
+for a pushed `vMAJOR.MINOR.PATCH` tag. Manual dispatch accepts an existing
+tag and builds the source at that tag. A tag with a prerelease suffix is
+published as a prerelease. The tag must match the version name in
+`pubspec.yaml`, for example `v0.1.0` for `0.1.0+1`. Increase the integer
+after `+` for every release so Android can install it as an upgrade.
+
+Configure the `android-release` GitHub environment with these secrets.
+
+- `DIRKA_RELEASE_KEYSTORE_BASE64` contains the release keystore encoded as Base64.
+- `DIRKA_RELEASE_STORE_PASSWORD` unlocks the keystore.
+- `DIRKA_RELEASE_KEY_ALIAS` identifies the release key inside it.
+- `DIRKA_RELEASE_KEY_PASSWORD` unlocks that key.
+
+Set `DIRKA_RELEASE_CERT_SHA256` as a variable in the same environment. Use
+the signing certificate's SHA-256 fingerprint from `keytool -list -v`.
+The workflow checks the signer against that fingerprint before publication.
+Keep a secure backup of the keystore and use the same signing key for future
+upgrades. Confirm ownership of the application ID before the first public
+release. [Android APK signing](https://developer.android.com/tools/apksigner)
+
+On an ARM64 Android device, verify the downloaded checksums and install the
+release. On macOS use `shasum -a 256 -c SHA256SUMS`.
+
+```sh
+sha256sum -c SHA256SUMS
+adb -s DEVICE_SERIAL install -r dirka-v0.1.0-android-arm64.apk
+```
+
+Android requires the installed and incoming APKs to use the same signing
+identity. Moving from the test build to a release with a different key
+requires a fresh installation. Uninstalling clears Dirka's saved clients.
 
 Switching away from Dirka and reopening it preserves running clients while
 the service lives. Saved entries load disconnected after a process restart

@@ -46,7 +46,15 @@ class _MemoryRepository implements ClientRepository {
 class _Runtime implements TunnelRuntime {
   final _updates = StreamController<Map<int, TunnelState>>.broadcast();
   final _active = <int, TunnelState>{};
+  final started = <int>[];
   final stopped = <int>[];
+  bool failStart = false;
+  bool failStop = false;
+
+  void emit(int id, TunnelState state) {
+    _active[id] = state;
+    _updates.add(Map.of(_active));
+  }
 
   @override
   Stream<Map<int, TunnelState>> get states => Stream.multi((listener) {
@@ -57,17 +65,19 @@ class _Runtime implements TunnelRuntime {
 
   @override
   Future<void> start(int id, TunnelConfig config) async {
-    _active[id] = (
+    if (failStart) throw StateError('test start failed');
+    started.add(id);
+    emit(id, (
       status: TunnelStatus.waitingForAgent,
       active: true,
       stopping: false,
       error: null,
-    );
-    _updates.add(Map.of(_active));
+    ));
   }
 
   @override
   Future<void> stop(int id) async {
+    if (failStop) throw StateError('test stop failed');
     stopped.add(id);
     _active.remove(id);
     _updates.add(Map.of(_active));
@@ -175,6 +185,100 @@ void main() {
     expect(find.text('new-route'), findsNothing);
     expect(store.stored.clients.single.id, firstId + 1);
   });
+
+  testWidgets('ellipsizes long route and relay text on a narrow display', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final route = List.filled(120, 'r').join();
+    final relay = "${List.filled(100, 'h').join()}.example.test";
+    final repository = _MemoryRepository()
+      ..stored = StoredClients(
+        nextId: 2,
+        clients: [
+          StoredClient(
+            id: 1,
+            source: _source
+                .replaceFirst('home-route', route)
+                .replaceFirst('relay.example.test', relay),
+          ),
+        ],
+      );
+    await tester.pumpWidget(
+      DirkaApp(repository: repository, runtime: _Runtime()),
+    );
+    await tester.pumpAndSettle();
+
+    for (final label in [route, relay]) {
+      final text = tester.widget<Text>(find.text(label));
+      expect(text.maxLines, 1);
+      expect(text.overflow, TextOverflow.ellipsis);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'shows command errors and reattaches without starting another client',
+    (tester) async {
+      final repository = _MemoryRepository()
+        ..stored = StoredClients(
+          nextId: 2,
+          clients: [StoredClient(id: 1, source: _source)],
+        );
+      final runtime = _Runtime()..failStart = true;
+      Future<void> open() async {
+        await tester.pumpWidget(
+          DirkaApp(repository: repository, runtime: runtime),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await open();
+      await _tap(tester, 'Connect');
+      expect(find.textContaining('Could not start forwarding'), findsOneWidget);
+      expect(runtime.started, isEmpty);
+      runtime.failStart = false;
+      await _tap(tester, 'Connect');
+      expect(runtime.started, [1]);
+      expect(find.textContaining('Could not start forwarding'), findsNothing);
+
+      runtime.emit(1, (
+        status: TunnelStatus.connecting,
+        active: true,
+        stopping: false,
+        error: 'Relay connection interrupted.',
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Connecting'), findsOneWidget);
+      expect(find.text('Relay connection interrupted.'), findsOneWidget);
+      expect(find.text('Disconnect'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      expect(runtime.stopped, isEmpty);
+      await open();
+      expect(find.text('Disconnect'), findsOneWidget);
+      expect(runtime.started, [1]);
+
+      runtime.failStop = true;
+      await _tap(tester, 'Disconnect');
+      expect(
+        find.text('Could not disconnect this client. Try again.'),
+        findsOneWidget,
+      );
+      expect(find.text('Disconnect'), findsOneWidget);
+      runtime.failStop = false;
+      await _tap(tester, 'Disconnect');
+      expect(find.text('Disconnected'), findsOneWidget);
+      expect(runtime.stopped, [1]);
+    },
+  );
 
   testWidgets(
     'keeps a draft if secure storage fails and locks active entries',

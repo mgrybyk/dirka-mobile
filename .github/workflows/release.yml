@@ -1,0 +1,83 @@
+name: Signed Android release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dirka-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    environment: android-release
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate tag format
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*)?$ ]]; then
+            echo "Use a vMAJOR.MINOR.PATCH tag, optionally with a prerelease suffix." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - name: Check package version
+        run: |
+          version="$(awk '$1 == "version:" {print $2}' pubspec.yaml)"
+          build_number="${version##*+}"
+          if [[ "$version" != "${RELEASE_TAG#v}+$build_number" || ! "$build_number" =~ ^[1-9][0-9]*$ ]]; then
+            echo "The tag must match the version in pubspec.yaml, which also needs a positive build number." >&2
+            exit 1
+          fi
+      - uses: gradle/actions/wrapper-validation@v5
+      - uses: ./.github/actions/android-tools
+      - run: flutter pub get --enforce-lockfile
+      - name: Build unsigned ARM64 APK
+        env:
+          DIRKA_UNSIGNED_RELEASE: '1'
+        run: flutter build apk --release
+      - name: Sign and verify the APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DIRKA_RELEASE_KEYSTORE_BASE64 }}
+          DIRKA_RELEASE_STORE_PASSWORD: ${{ secrets.DIRKA_RELEASE_STORE_PASSWORD }}
+          DIRKA_RELEASE_KEY_ALIAS: ${{ secrets.DIRKA_RELEASE_KEY_ALIAS }}
+          DIRKA_RELEASE_KEY_PASSWORD: ${{ secrets.DIRKA_RELEASE_KEY_PASSWORD }}
+          DIRKA_RELEASE_CERT_SHA256: ${{ vars.DIRKA_RELEASE_CERT_SHA256 }}
+        run: |
+          : "${KEYSTORE_BASE64:?Configure DIRKA_RELEASE_KEYSTORE_BASE64 in the android-release environment.}"
+          umask 077
+          keystore="$(mktemp)"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          unset KEYSTORE_BASE64
+          export DIRKA_RELEASE_KEYSTORE="$keystore"
+          mkdir -p release-assets
+          tool/sign-android-apk.sh build/app/outputs/flutter-apk/app-release.apk \
+            "release-assets/dirka-$RELEASE_TAG-android-arm64.apk"
+          cd release-assets
+          sha256sum "dirka-$RELEASE_TAG-android-arm64.apk" > SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--verify-tag --generate-notes)
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${flags[@]}" --title "Dirka $RELEASE_TAG" \
+            "release-assets/dirka-$RELEASE_TAG-android-arm64.apk" release-assets/SHA256SUMS

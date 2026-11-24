@@ -22,6 +22,15 @@ jobs:
       - run: cargo fmt --manifest-path native/Cargo.toml --all -- --check
       - run: cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
       - run: cargo test --manifest-path native/Cargo.toml --locked
+      - name: Check pinned upstream JavaScript and WASM
+        working-directory: .upstream/node-tunnel
+        env:
+          RUSTUP_TOOLCHAIN: '1.100.0'
+        run: |
+          npm test
+          rustup target add wasm32-unknown-unknown
+          npm run build:wasm
+          npm run test:rust
   android:
     runs-on: ubuntu-24.04
     steps:
@@ -30,38 +39,14 @@ jobs:
         with:
           node-version: '26.13.0'
       - uses: gradle/actions/wrapper-validation@v5
-      - name: Set up Temurin JDK 25.0.5.1+2
-        run: |
-          archive=OpenJDK25U-jdk_x64_linux_hotspot_25.0.5.1_2.tar.gz
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5.1%2B2/$archive" \
-            --output "$RUNNER_TEMP/$archive"
-          echo "760f91b22c3efc9bd1b64ff950598231be82928cc807e30691a0e7a2995a62c0  $RUNNER_TEMP/$archive" | sha256sum -c -
-          java_dir="$RUNNER_TEMP/jdk"
-          mkdir -p "$java_dir"
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$java_dir" --strip-components=1
-          echo "JAVA_HOME=$java_dir" >> "$GITHUB_ENV"
-          echo "$java_dir/bin" >> "$GITHUB_PATH"
-      - name: Set up Flutter 3.50.1
-        run: |
-          flutter_sdk="$RUNNER_TEMP/flutter"
-          git clone --depth 1 --branch 3.50.1 https://github.com/flutter/flutter.git "$flutter_sdk"
-          echo "$flutter_sdk/bin" >> "$GITHUB_PATH"
-      - name: Install Android SDK packages
-        run: sdkmanager 'platforms;android-36' 'platforms;android-35' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+      - uses: ./.github/actions/android-tools
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test integration_test
       - run: flutter analyze --fatal-warnings --fatal-infos
       - run: tool/fetch-upstream.sh
       - run: flutter test
       - run: flutter build apk --release
-      - name: Verify ARM64 APK native libraries and alignment
-        run: |
-          apk=build/app/outputs/flutter-apk/app-release.apk
-          unzip -p "$apk" lib/arm64-v8a/libdirka_android.so > /dev/null
-          unzip -p "$apk" lib/arm64-v8a/libdirka_engine.so > /dev/null
-          unzip -p "$apk" lib/arm64-v8a/libnode_tunnel_client.so > /dev/null
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
+      - run: tool/verify-android-apk.sh build/app/outputs/flutter-apk/app-release.apk
       - uses: actions/upload-artifact@v7
         with:
           name: dirka-android-arm64-test

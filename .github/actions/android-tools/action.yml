@@ -1,0 +1,27 @@
+name: Pinned Android build tools
+description: Install the Flutter, JDK, and Android SDK versions used to build Dirka.
+runs:
+  using: composite
+  steps:
+    - name: Set up Temurin JDK 25.0.5.1+2
+      shell: bash
+      run: |
+        archive=OpenJDK25U-jdk_x64_linux_hotspot_25.0.5.1_2.tar.gz
+        curl --fail --silent --show-error --location --retry 3 \
+          "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5.1%2B2/$archive" \
+          --output "$RUNNER_TEMP/$archive"
+        echo "760f91b22c3efc9bd1b64ff950598231be82928cc807e30691a0e7a2995a62c0  $RUNNER_TEMP/$archive" | sha256sum -c -
+        java_dir="$RUNNER_TEMP/jdk"
+        mkdir -p "$java_dir"
+        tar -xzf "$RUNNER_TEMP/$archive" -C "$java_dir" --strip-components=1
+        echo "JAVA_HOME=$java_dir" >> "$GITHUB_ENV"
+        echo "$java_dir/bin" >> "$GITHUB_PATH"
+    - name: Set up Flutter 3.50.1
+      shell: bash
+      run: |
+        flutter_sdk="$RUNNER_TEMP/flutter"
+        git clone --depth 1 --branch 3.50.1 https://github.com/flutter/flutter.git "$flutter_sdk"
+        echo "$flutter_sdk/bin" >> "$GITHUB_PATH"
+    - name: Install Android SDK packages
+      shell: bash
+      run: sdkmanager 'platforms;android-36' 'platforms;android-35' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'

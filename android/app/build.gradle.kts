@@ -7,6 +7,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val unsignedRelease = providers.environmentVariable("DIRKA_UNSIGNED_RELEASE").orNull == "1"
+
 android {
     namespace = "com.mgrybyk.dirka"
     compileSdk = flutter.compileSdkVersion
@@ -37,9 +39,10 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Store keys stay out of Gradle. CI signs the unsigned APK with apksigner.
+            if (!unsignedRelease) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }
