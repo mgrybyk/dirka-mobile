@@ -24,6 +24,15 @@ export CC_aarch64_linux_android="$linker"
 export AR_aarch64_linux_android="$bin/llvm-ar"
 export DIRKA_UPSTREAM_TARGET_DIR="$root/native/target/upstream-android"
 
+rustup_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+if [[ -x "$rustup_bin/cargo" ]]; then
+  export PATH="$rustup_bin:$PATH"
+fi
+if ! command -v cargo >/dev/null; then
+  echo "Cargo is required for Dirka's native engine. Install Rust with rustup (https://rust-lang.org/tools/install/)." >&2
+  exit 1
+fi
+
 cd "$root"
 cargo build --locked --release --target "$target" --target-dir native/target --manifest-path native/Cargo.toml
 install -d "$destination/arm64-v8a"

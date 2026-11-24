@@ -10,20 +10,29 @@ Android SDK Platform 36, Build Tools 36.0.0, and NDK 28.2.13676358. The wrapper
 pins Gradle 9.5.0. The Flutter template pins AGP 9.3.1 and Kotlin 2.4.20.
 Host interoperability tests use Node 26.13.0 and the OpenSSL CLI.
 
-Set `JAVA_HOME` and `ANDROID_HOME`. Install the SDK packages using Android
-command-line tools. Android Studio is optional. Build on macOS or Linux.
+Install Rust with [rustup](https://rust-lang.org/tools/install/). The
+toolchain file selects Rust 1.100.0 and the Android ARM64 target. Set
+`JAVA_HOME` and `ANDROID_HOME` to your JDK and Android SDK if Flutter
+does not discover them. Android Studio is optional. Build on macOS or Linux.
 
 ```sh
 sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
-rustup target add aarch64-linux-android
-tool/fetch-upstream.sh
 flutter pub get --enforce-lockfile
-flutter build apk --release --target-platform android-arm64
+flutter build apk --release
 ```
+
+The Android build fetches the pinned node-tunnel source on first use and
+packages the ARM64 engine. If Gradle fails while transforming `android.jar`,
+check that API 36 is fully installed in the SDK Flutter reports in
+`flutter doctor -v`. Reinstall `platforms;android-36` if its JAR is missing.
 
 ## Checks
 
+If Cargo is missing from your shell's PATH after installing rustup, open
+a new shell or source `~/.cargo/env` before running the Rust checks.
+
 ```sh
+tool/fetch-upstream.sh
 dart format --output=none --set-exit-if-changed lib test integration_test
 flutter analyze --fatal-warnings --fatal-infos
 flutter test

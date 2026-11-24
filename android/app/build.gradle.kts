@@ -24,6 +24,9 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
@@ -87,11 +90,15 @@ abstract class BuildDirkaNative : DefaultTask() {
 val projectRoot = rootProject.layout.projectDirectory.dir("..")
 val configuredNdkVersion = flutter.ndkVersion
 val minAndroidSdk = flutter.minSdkVersion
+val prepareDirkaUpstream by tasks.registering(Exec::class) {
+    commandLine("bash", projectRoot.file("tool/fetch-upstream.sh").asFile)
+}
 androidComponents {
     val installedNdk = sdkComponents.ndkDirectory
     onVariants { variant ->
         val taskName = "buildDirkaNative" + variant.name.replaceFirstChar { it.uppercaseChar() }
         val nativeBuild = tasks.register<BuildDirkaNative>(taskName) {
+            dependsOn(prepareDirkaUpstream)
             buildScript.set(projectRoot.file("tool/build-android-native.sh"))
             ndkDirectory.set(installedNdk)
             ndkVersion.set(configuredNdkVersion)
