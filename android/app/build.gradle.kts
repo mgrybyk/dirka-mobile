@@ -1,3 +1,6 @@
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -46,4 +49,62 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+abstract class BuildDirkaNative : DefaultTask() {
+    @get:InputFile
+    abstract val buildScript: RegularFileProperty
+
+    @get:Input
+    abstract val ndkVersion: Property<String>
+
+    @get:Input
+    abstract val minSdk: Property<Int>
+
+    @get:Internal
+    abstract val ndkDirectory: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val libraries: DirectoryProperty
+
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    @TaskAction
+    fun build() {
+        execOperations.exec {
+            commandLine(
+                "bash",
+                buildScript.get().asFile,
+                ndkDirectory.get().asFile,
+                libraries.get().asFile,
+                minSdk.get(),
+            )
+        }
+    }
+}
+
+val projectRoot = rootProject.layout.projectDirectory.dir("..")
+val configuredNdkVersion = flutter.ndkVersion
+val minAndroidSdk = flutter.minSdkVersion
+androidComponents {
+    val installedNdk = sdkComponents.ndkDirectory
+    onVariants { variant ->
+        val taskName = "buildDirkaNative" + variant.name.replaceFirstChar { it.uppercaseChar() }
+        val nativeBuild = tasks.register<BuildDirkaNative>(taskName) {
+            buildScript.set(projectRoot.file("tool/build-android-native.sh"))
+            ndkDirectory.set(installedNdk)
+            ndkVersion.set(configuredNdkVersion)
+            minSdk.set(minAndroidSdk)
+            inputs.files(
+                projectRoot.file("rust-toolchain.toml"),
+                projectRoot.file("native/Cargo.toml"),
+                projectRoot.file("native/Cargo.lock"),
+                projectRoot.file("native/build.rs"),
+                projectRoot.file("native/upstream.rev"),
+            )
+            inputs.dir(projectRoot.dir("native/src"))
+        }
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(nativeBuild, BuildDirkaNative::libraries)
+    }
 }
