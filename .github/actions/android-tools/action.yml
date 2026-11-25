@@ -1,5 +1,5 @@
 name: Set up Android build tools
-description: Install Flutter and Java for Dirka's Android build.
+description: Set up Flutter, Java, and the Android NDK for Dirka's Android build.
 runs:
   using: composite
   steps:
@@ -8,6 +8,7 @@ runs:
         distribution: temurin
         java-version: '25'
     - name: Set up the latest patch in the Flutter release series
+      id: flutter
       shell: bash
       run: |
         flutter_series=3.50
@@ -19,3 +20,35 @@ runs:
         flutter_sdk="$RUNNER_TEMP/flutter"
         git clone --depth 1 --branch "$flutter_version" "$flutter_repo" "$flutter_sdk"
         echo "$flutter_sdk/bin" >> "$GITHUB_PATH"
+
+        # The app uses flutter.ndkVersion, so keep the CI cache tied to the selected SDK.
+        ndk_version="$(awk -F '"' '/^[[:space:]]*val ndkVersion: String = / { print $2; exit }' \
+          "$flutter_sdk/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt")"
+        if [[ ! "$ndk_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Could not determine the Android NDK version from Flutter $flutter_version."
+          exit 1
+        fi
+        echo "ndk-version=$ndk_version" >> "$GITHUB_OUTPUT"
+        echo "ndk-path=${ANDROID_HOME:?ANDROID_HOME is required on the runner}/ndk/$ndk_version" >> "$GITHUB_OUTPUT"
+    - name: Restore the Android NDK
+      id: ndk-cache
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ steps.flutter.outputs.ndk-path }}
+        key: android-ndk-${{ runner.os }}-${{ runner.arch }}-${{ steps.flutter.outputs.ndk-version }}
+    - name: Install the Android NDK if needed
+      shell: bash
+      env:
+        NDK_VERSION: ${{ steps.flutter.outputs.ndk-version }}
+        NDK_PATH: ${{ steps.flutter.outputs.ndk-path }}
+      run: |
+        if [[ ! -f "$NDK_PATH/source.properties" ]]; then
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;$NDK_VERSION"
+          test -f "$NDK_PATH/source.properties"
+        fi
+    - name: Save the Android NDK
+      if: steps.ndk-cache.outputs.cache-hit != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ steps.flutter.outputs.ndk-path }}
+        key: ${{ steps.ndk-cache.outputs.cache-primary-key }}
