@@ -6,11 +6,12 @@ use std::{
     time::Duration,
 };
 
-use dirka_engine::engine::{Client, Config, Snapshot, Status};
+use dirka_engine::engine::{Client, Config, Snapshot, Status, TimingOptions};
 use serde::Deserialize;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+    runtime::Handle,
     time::{sleep, timeout},
 };
 use tokio_rustls::rustls::RootCertStore;
@@ -224,6 +225,94 @@ async fn independent_clients_forward_clean_up_and_reconnect() {
     b.stop();
     status(&b, Status::Stopped).await;
     let _third_rebound = TcpListener::bind(("127.0.0.1", third)).await.unwrap();
+}
+
+#[tokio::test]
+async fn relay_only_reconnects_reuse_tasks_and_dropping_the_client_releases_them() {
+    check_relay_only_reconnect_cleanup(false).await;
+}
+
+#[tokio::test]
+async fn relay_only_tls_reconnects_release_client_tasks() {
+    check_relay_only_reconnect_cleanup(true).await;
+}
+
+async fn check_relay_only_reconnect_cleanup(tls: bool) {
+    let _ports = PORT_FIXTURES.lock().await;
+    let mut relay = Fixture::launch(tls);
+    let reservation = reserve();
+    let local = port(&reservation);
+    drop(reservation);
+    let host = if tls { "localhost" } else { "127.0.0.1" };
+    let mut config = relay.config(host, vec![local], tls);
+    config.timing.heartbeat_ms = 100;
+    config.timing.reconnect_ms = 100;
+    config.timing.max_reconnect_ms = 100;
+    let metrics = Handle::current().metrics();
+    let baseline = metrics.num_alive_tasks();
+    let client = Client::spawn(config, tls.then(|| relay.roots()));
+
+    status(&client, Status::WaitingForAgent).await;
+    let waiting_tasks = metrics.num_alive_tasks();
+    assert!(waiting_tasks > baseline);
+    for _ in 0..5 {
+        relay.send("stop-relay");
+        status(&client, Status::Connecting).await;
+        relay.send("start-relay");
+        client.network_available();
+        status(&client, Status::WaitingForAgent).await;
+        assert_eq!(metrics.num_alive_tasks(), waiting_tasks);
+    }
+
+    drop(client);
+    timeout(Duration::from_secs(2), async {
+        while metrics.num_alive_tasks() != baseline {
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("dropping the handle releases the client tasks");
+    let _rebound = TcpListener::bind(("127.0.0.1", local)).await.unwrap();
+}
+
+#[tokio::test]
+async fn unanswered_registrations_close_each_control_socket() {
+    let _ports = PORT_FIXTURES.lock().await;
+    let relay = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let reservation = reserve();
+    let local = port(&reservation);
+    drop(reservation);
+    let mut client = Client::spawn(
+        Config {
+            relay_host: "127.0.0.1".into(),
+            relay_port: relay.local_addr().unwrap().port(),
+            route: "dirka-interop".into(),
+            key: "a".repeat(32),
+            bind_host: "127.0.0.1".into(),
+            ports: vec![local],
+            tls: false,
+            timing: TimingOptions {
+                handshake_ms: 300,
+                reconnect_ms: 100,
+                max_reconnect_ms: 100,
+                ..Default::default()
+            },
+        },
+        None,
+    );
+
+    timeout(Duration::from_secs(5), async {
+        for _ in 0..3 {
+            let (mut socket, _) = relay.accept().await.unwrap();
+            let mut registration = Vec::new();
+            socket.read_to_end(&mut registration).await.unwrap();
+            assert!(!registration.is_empty());
+        }
+    })
+    .await
+    .expect("each unanswered registration is followed by EOF and a new connection");
+    client.stop();
+    status(&client, Status::Stopped).await;
 }
 
 #[tokio::test]

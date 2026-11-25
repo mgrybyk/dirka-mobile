@@ -99,6 +99,40 @@ To check recovery after a Wi-Fi change, use USB ADB, leave Dirka in the
 background, change or briefly disconnect the device's Wi-Fi, then restore
 access to the fixture and repeat the binary check.
 
+### Idle memory
+
+On an unlocked test device with the release APK installed and Dirka's
+interface in English, run both phases with Python 3 and Node.
+
+```sh
+python3 tool/device-idle-comparison.py DEVICE_SERIAL dirka-memory-results
+```
+
+The runner starts a loopback relay with no agent, creates a temporary
+client, and captures relay-only memory before restarting Dirka for the
+disconnected capture. Each phase takes two hours by default. Keep the
+device connected to ADB and leave the app untouched during the run.
+
+For manual captures, use the following commands.
+
+Use the same release build and screen conditions for both runs. Start
+with a fresh Dirka process each time. Keep Dirka disconnected for the
+first run. For the second, connect to the relay and wait for **Waiting
+for agent** before starting the capture. Leave forwarding unused.
+
+```sh
+node tool/device-memory.cjs DEVICE_SERIAL > disconnected.meminfo
+node tool/device-memory.cjs DEVICE_SERIAL > relay-only.meminfo
+```
+
+Each run records 13 samples, 10 minutes apart by default, and stops if
+Dirka changes processes. Compare the `Heap Alloc` column for `Native Heap`
+and `Dalvik Heap`, along with `TOTAL PSS`, `TOTAL SWAP PSS`, and graphics.
+Measure foreground and background separately. Press Home for a background
+sample while the foreground tunnel service continues running. To measure
+with the Flutter activity closed, press Back from the clients screen and
+verify the service is still running before starting the capture.
+
 ## Architecture
 
 Flutter manages saved configurations and displays the state published by

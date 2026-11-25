@@ -138,7 +138,7 @@ class TunnelService : Service() {
         while (iterator.hasNext()) {
             val (id, handle) = iterator.next()
             val state = try {
-                val data = TunnelNative.snapshot(handle) ?: error("missing native snapshot")
+                val data = TunnelNative.pollSnapshot(handle) ?: continue
                 val json = JSONObject(data.decodeToString())
                 val status = json.getString("status")
                 val problem = if (json.isNull("error")) null else json.getString("error")

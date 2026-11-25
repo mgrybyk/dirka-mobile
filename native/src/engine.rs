@@ -108,6 +108,12 @@ impl Client {
     pub fn snapshot(&self) -> Snapshot {
         self.state.borrow().clone()
     }
+
+    pub(crate) fn updated_snapshot(&mut self) -> Option<watch::Ref<'_, Snapshot>> {
+        // The final state can be unread even after the worker drops the sender.
+        let snapshot = self.state.borrow_and_update();
+        snapshot.has_changed().then_some(snapshot)
+    }
 }
 
 struct Engine<'a> {
@@ -320,31 +326,32 @@ impl<'a> Engine<'a> {
 
     async fn session(&mut self, delay: &mut Duration) -> Result<(), SessionError> {
         let handshake = self.timing.handshake;
-        let relay = self.relay.clone();
-        let registration = self
-            .protocol
-            .frame(Operation::Register, None::<&()>)
-            .map_err(SessionError::protocol)?;
-        let establish = timeout(handshake, async {
-            let mut stream = relay.connect().await?;
-            send(&mut stream, &registration, handshake).await?;
-            let mut wire = Frames::new(stream);
-            let frame = wire.frame().await?;
-            Ok::<_, io::Error>((wire, frame))
-        });
-        tokio::pin!(establish);
-        let (mut wire, first) = loop {
-            tokio::select! {
-                established = &mut establish => break established.map_err(io::Error::from)??,
-                Some(_) = self.local.recv() => {},
-                Some(_) = self.data.join_next() => {},
+        let (mut wire, registration_action) = {
+            let registration = self
+                .protocol
+                .frame(Operation::Register, None::<&()>)
+                .map_err(SessionError::protocol)?;
+            let establish = timeout(handshake, async {
+                let mut stream = self.relay.connect().await?;
+                send(&mut stream, &registration, handshake).await?;
+                let mut wire = Frames::new(stream);
+                let frame = wire.frame().await?;
+                let action = self
+                    .protocol
+                    .step(Operation::ControlFrame, frame)
+                    .map_err(SessionError::protocol)?;
+                Ok::<_, SessionError>((wire, action))
+            });
+            tokio::pin!(establish);
+            loop {
+                tokio::select! {
+                    established = &mut establish => break established.map_err(io::Error::from)??,
+                    Some(_) = self.local.recv() => {},
+                    Some(_) = self.data.join_next() => {},
+                }
             }
         };
-        let mut ready = match self
-            .protocol
-            .step(Operation::ControlFrame, &first)
-            .map_err(SessionError::protocol)?
-        {
+        let mut ready = match registration_action {
             Action::Event(Event::Registration { ready }) => ready,
             Action::Event(Event::Fatal { error }) => return Err(fatal(&error)),
             _ => {
@@ -367,7 +374,7 @@ impl<'a> Engine<'a> {
             let expiry = pending.values().map(|item| item.deadline).min();
             tokio::select! {
                 frame = wire.frame() => {
-                    match self.protocol.step(Operation::ControlFrame, &frame?).map_err(SessionError::protocol)? {
+                    match self.protocol.step(Operation::ControlFrame, frame?).map_err(SessionError::protocol)? {
                         Action::Event(Event::Registration { ready: update }) => {
                             ready = update;
                             self.publish(presence(ready), None);
@@ -429,7 +436,7 @@ impl<'a> Engine<'a> {
                 let mut wire = Frames::new(data);
                 let frame = wire.frame().await?;
                 if !matches!(
-                    decoder.step(Operation::DataFrame, &frame)?,
+                    decoder.step(Operation::DataFrame, frame)?,
                     Action::Event(Event::StartForwarding)
                 ) {
                     return Err(io::Error::new(
@@ -477,5 +484,47 @@ async fn deadline(when: Option<Instant>) {
     match when {
         Some(when) => sleep_until(when).await,
         None => std::future::pending().await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_poll_skips_unchanged_state_and_reads_the_final_update() {
+        let (state, receiver) = watch::channel(Snapshot {
+            status: Status::Connecting,
+            error: None,
+        });
+        let mut client = Client {
+            stop: None,
+            state: receiver,
+            network: watch::channel(()).0,
+        };
+
+        assert!(client.updated_snapshot().is_none());
+        state.send_replace(Snapshot {
+            status: Status::WaitingForAgent,
+            error: None,
+        });
+        assert_eq!(client.snapshot().status, Status::WaitingForAgent);
+        assert_eq!(
+            client.updated_snapshot().unwrap().status,
+            Status::WaitingForAgent
+        );
+        assert!(client.updated_snapshot().is_none());
+
+        state.send_replace(Snapshot {
+            status: Status::Stopped,
+            error: Some("bind failed".into()),
+        });
+        drop(state);
+        {
+            let snapshot = client.updated_snapshot().unwrap();
+            assert_eq!(snapshot.status, Status::Stopped);
+            assert_eq!(snapshot.error.as_deref(), Some("bind failed"));
+        }
+        assert!(client.updated_snapshot().is_none());
     }
 }
