@@ -21,9 +21,21 @@ fi
 "$build_tools/zipalign" -c -P 16 4 "$apk"
 signers="$("$build_tools/apksigner" verify --print-certs "$apk")"
 if [[ -n "$expected" ]]; then
-  fingerprint="$(printf '%s\n' "$signers" | awk '/^Signer #[0-9]+ certificate SHA-256 digest: / { print $NF }')"
+  # Build Tools 37 adds the signature scheme and a colon to the signer label.
+  fingerprint="$(printf '%s\n' "$signers" | awk '
+    /^Signer #[0-9]+ certificate SHA-256 digest: / ||
+    /^(V[12] |V3[.]0 )?Signer( #[0-9]+)?: certificate SHA-256 digest: / { print $NF }
+  ')"
   expected="$(printf '%s' "$expected" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-  if [[ ! "$expected" =~ ^[a-f0-9]{64}$ || "$fingerprint" != "$expected" ]]; then
+  if [[ ! "$expected" =~ ^[a-f0-9]{64}$ ]]; then
+    echo "DIRKA_RELEASE_CERT_SHA256 must contain a SHA-256 certificate fingerprint." >&2
+    exit 1
+  fi
+  if [[ ! "$fingerprint" =~ ^[a-f0-9]{64}$ ]]; then
+    echo "Expected exactly one APK signing certificate SHA-256 digest from apksigner." >&2
+    exit 1
+  fi
+  if [[ "$fingerprint" != "$expected" ]]; then
     echo "APK certificate does not match DIRKA_RELEASE_CERT_SHA256." >&2
     exit 1
   fi

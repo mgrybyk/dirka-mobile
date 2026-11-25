@@ -9,11 +9,62 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: dirka-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: '26'
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run-checks: ${{ steps.filter.outputs.run-checks }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide whether checks are needed
+        id: filter
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process')
+          const { readFileSync, appendFileSync } = require('node:fs')
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
+          const pr = event.pull_request
+          const base = pr ? pr.base.sha : event.before
+          const head = pr ? pr.head.sha : process.env.GITHUB_SHA
+          const ignoredFiles = new Set(['.gitignore', 'android/.gitignore', '.github/dependabot.yml'])
+          const isIgnored = file => ignoredFiles.has(file) || file.startsWith('docs/') || file.endsWith('.md')
+          let runChecks = true
+
+          if (base && !/^0+$/.test(base)) {
+            try {
+              // Compare PRs with the merge base and pushes over the entire pushed range.
+              // List both paths of a rename so moving code into docs still runs checks.
+              const range = `${base}${pr ? '...' : '..'}${head}`
+              const files = execFileSync('git', ['diff', '--no-renames', '--name-only', '-z', range], {
+                encoding: 'utf8'
+              }).split('\0').filter(Boolean)
+              runChecks = files.some(file => !isIgnored(file))
+            } catch (error) {
+              console.warn(`Could not determine changed files; running checks: ${error.message}`)
+            }
+          }
+
+          appendFileSync(process.env.GITHUB_OUTPUT, `run-checks=${runChecks}\n`)
+          console.log(runChecks ? 'Checks required.' : 'No build-related paths changed; skipping checks.')
+          NODE
+
   native:
+    needs: changes
+    if: needs.changes.outputs.run-checks == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -36,6 +87,8 @@ jobs:
           npm run build:wasm
           npm run test:rust
   android:
+    needs: changes
+    if: needs.changes.outputs.run-checks == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -56,3 +109,26 @@ jobs:
           name: dirka-android-arm64-test
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+  status:
+    name: CI status
+    needs: [changes, native, android]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify required checks
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUN_CHECKS: ${{ needs.changes.outputs.run-checks }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+        run: |
+          if [[ "$CHANGES_RESULT" == 'success' ]] &&
+             { [[ "$RUN_CHECKS" == 'false' && "$NATIVE_RESULT" == 'skipped' && "$ANDROID_RESULT" == 'skipped' ]] ||
+               [[ "$RUN_CHECKS" == 'true' && "$NATIVE_RESULT" == 'success' && "$ANDROID_RESULT" == 'success' ]]; }; then
+            echo 'CI passed.'
+          else
+            echo 'CI failed.'
+            exit 1
+          fi
