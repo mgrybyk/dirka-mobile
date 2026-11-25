@@ -6,7 +6,7 @@ internal object TunnelNative {
     }
 
     external fun start(config: ByteArray): Long
-    external fun snapshot(handle: Long): ByteArray?
+    external fun pollSnapshot(handle: Long): ByteArray?
     external fun stop(handle: Long)
     external fun destroy(handle: Long)
     external fun networkAvailable(handle: Long)

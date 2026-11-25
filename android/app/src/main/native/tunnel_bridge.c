@@ -21,11 +21,16 @@ Java_com_mgrybyk_dirka_TunnelNative_start(JNIEnv *env, jobject instance, jbyteAr
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_com_mgrybyk_dirka_TunnelNative_snapshot(JNIEnv *env, jobject instance, jlong handle) {
+Java_com_mgrybyk_dirka_TunnelNative_pollSnapshot(JNIEnv *env, jobject instance, jlong handle) {
     (void)instance;
     uint8_t bytes[8192];
-    int32_t length = dirka_client_snapshot((dirka_client *)(intptr_t)handle, bytes, sizeof(bytes));
-    if (length <= 0 || (size_t)length > sizeof(bytes)) return NULL;
+    int32_t length = dirka_client_poll_snapshot((dirka_client *)(intptr_t)handle, bytes, sizeof(bytes));
+    if (length == 0) return NULL;
+    if (length < 0 || (size_t)length > sizeof(bytes)) {
+        jclass error = (*env)->FindClass(env, "java/lang/IllegalStateException");
+        if (error != NULL) (*env)->ThrowNew(env, error, "Could not read the native tunnel state");
+        return NULL;
+    }
 
     jbyteArray output = (*env)->NewByteArray(env, length);
     if (output != NULL) (*env)->SetByteArrayRegion(env, output, 0, length, (const jbyte *)bytes);

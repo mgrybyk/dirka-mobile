@@ -7,7 +7,7 @@ use std::{
 
 use tokio::runtime::{Builder, Runtime};
 
-use crate::engine::{Client, Config};
+use crate::engine::{Client, Config, Snapshot};
 
 static RUNTIME: OnceLock<Option<Runtime>> = OnceLock::new();
 const MAX_CONFIG_BYTES: usize = 4096;
@@ -76,16 +76,38 @@ unsafe extern "C" fn dirka_client_snapshot(
         let Some(client) = (unsafe { client.as_ref() }) else {
             return -1;
         };
-        let Ok(json) = serde_json::to_vec(&client.snapshot()) else {
-            return -1;
-        };
-        if output.is_null() || capacity < json.len() {
-            return -1;
-        }
-        unsafe { ptr::copy_nonoverlapping(json.as_ptr(), output, json.len()) };
-        json.len() as i32
+        unsafe { write_snapshot(&client.snapshot(), output, capacity) }
     }))
     .unwrap_or(-1)
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn dirka_client_poll_snapshot(
+    client: *mut Client,
+    output: *mut u8,
+    capacity: usize,
+) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let Some(client) = (unsafe { client.as_mut() }) else {
+            return -1;
+        };
+        let Some(snapshot) = client.updated_snapshot() else {
+            return 0;
+        };
+        unsafe { write_snapshot(&snapshot, output, capacity) }
+    }))
+    .unwrap_or(-1)
+}
+
+unsafe fn write_snapshot(snapshot: &Snapshot, output: *mut u8, capacity: usize) -> i32 {
+    let Ok(json) = serde_json::to_vec(snapshot) else {
+        return -1;
+    };
+    if output.is_null() || capacity < json.len() {
+        return -1;
+    }
+    unsafe { ptr::copy_nonoverlapping(json.as_ptr(), output, json.len()) };
+    json.len() as i32
 }
 
 #[unsafe(no_mangle)]

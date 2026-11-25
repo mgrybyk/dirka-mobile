@@ -26,6 +26,12 @@ dirka_client *dirka_client_start(const uint8_t *input, size_t length);
  * bytes. Poll until status "stopped" to observe completed cleanup. */
 int32_t dirka_client_snapshot(const dirka_client *client, uint8_t *out, size_t capacity);
 
+/* Reads the latest state update since start or the last poll. The initial
+ * state is "connecting". Intermediate updates may be coalesced. Supply 8192
+ * bytes. Returns bytes written, 0 when unchanged, or -1 on failure. A poll
+ * consumes the update even if writing fails; use snapshot to reread it. */
+int32_t dirka_client_poll_snapshot(dirka_client *client, uint8_t *out, size_t capacity);
+
 /* Requests asynchronous cancellation. Safe to repeat until destruction. */
 void dirka_client_stop(dirka_client *client);
 

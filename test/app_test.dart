@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:dirka_mobile/app_info/app_info.dart';
 import 'package:dirka_mobile/clients/client_repository.dart';
 import 'package:dirka_mobile/main.dart';
+import 'package:dirka_mobile/tunnel/android_tunnel_runtime.dart';
 import 'package:dirka_mobile/tunnel/tunnel_engine.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -147,6 +149,39 @@ void main() {
     expect(title, findsOneWidget);
     expect(Theme.of(tester.element(title)).brightness, Brightness.dark);
     expect(find.text('No saved clients'), findsOneWidget);
+  });
+
+  testWidgets('removing the idle app cancels its platform state listener', (
+    tester,
+  ) async {
+    const events = MethodChannel('com.mgrybyk.dirka/tunnel_states');
+    const commands = MethodChannel('com.mgrybyk.dirka/tunnels');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(events, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    messenger.setMockMethodCallHandler(commands, (call) async {
+      expect(call.method, 'snapshot');
+      return <int, Object?>{};
+    });
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(events, null);
+      messenger.setMockMethodCallHandler(commands, null);
+    });
+
+    final repository = _MemoryRepository();
+    for (var i = 0; i < 3; i++) {
+      await tester.pumpWidget(
+        DirkaApp(repository: repository, runtime: const AndroidTunnelRuntime()),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('No saved clients'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+    expect(calls, ['listen', 'cancel', 'listen', 'cancel', 'listen', 'cancel']);
   });
 
   testWidgets('validates, duplicates, edits, and deletes saved entries', (

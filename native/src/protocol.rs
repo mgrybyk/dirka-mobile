@@ -109,11 +109,15 @@ impl Protocol {
         SystemRandom::new()
             .fill(&mut nonce)
             .map_err(|_| io::Error::other("Secure randomness unavailable"))?;
-        let mut input = nonce.to_vec();
-        if let Some(body) = body {
-            serde_json::to_writer(&mut input, body)?;
-        }
-        match self.step(operation, &input)? {
+        let action = match body {
+            Some(body) => {
+                let mut input = nonce.to_vec();
+                serde_json::to_writer(&mut input, body)?;
+                self.step(operation, &input)?
+            }
+            None => self.step(operation, &nonce)?,
+        };
+        match action {
             Action::Frame(frame) => Ok(frame),
             _ => Err(io::Error::other("Expected an upstream send action")),
         }

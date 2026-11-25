@@ -61,6 +61,7 @@ impl Relay {
 pub struct Frames<R> {
     pub reader: BufReader<R>,
     partial: Vec<u8>,
+    complete: bool,
     limit: usize,
 }
 
@@ -69,11 +70,16 @@ impl<R: AsyncRead + Unpin> Frames<R> {
         Self {
             reader: BufReader::new(reader),
             partial: Vec::new(),
+            complete: false,
             limit: unsafe { nt_client_max_frame_bytes() },
         }
     }
 
-    pub async fn frame(&mut self) -> io::Result<Vec<u8>> {
+    pub async fn frame(&mut self) -> io::Result<&[u8]> {
+        if self.complete {
+            self.partial.clear();
+            self.complete = false;
+        }
         loop {
             let bytes = self.reader.fill_buf().await?;
             if bytes.is_empty() {
@@ -90,7 +96,8 @@ impl<R: AsyncRead + Unpin> Frames<R> {
             self.partial.extend_from_slice(&bytes[..count]);
             self.reader.consume(count + usize::from(newline.is_some()));
             if newline.is_some() {
-                return Ok(std::mem::take(&mut self.partial));
+                self.complete = true;
+                return Ok(&self.partial);
             }
         }
     }
@@ -126,5 +133,26 @@ mod tests {
         let mut payload = [0; 3];
         frames.reader.read_exact(&mut payload).await.unwrap();
         assert_eq!(payload, [0, 255, 10]);
+    }
+
+    #[tokio::test]
+    async fn frame_reader_reuses_storage_and_resets_after_a_complete_frame() {
+        let (mut relay, client) = duplex(32);
+        let mut frames = Frames::new(client);
+
+        relay.write_all(b"first\npo").await.unwrap();
+        let first = frames.frame().await.unwrap();
+        assert_eq!(first, b"first");
+        let storage = first.as_ptr();
+
+        assert!(
+            timeout(Duration::from_millis(20), frames.frame())
+                .await
+                .is_err()
+        );
+        relay.write_all(b"ng\n").await.unwrap();
+        let second = frames.frame().await.unwrap();
+        assert_eq!(second, b"pong");
+        assert_eq!(second.as_ptr(), storage);
     }
 }
